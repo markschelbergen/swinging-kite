@@ -5,8 +5,8 @@ from mpl_toolkits import mplot3d
 from generate_initial_state import get_moving_pyramid, get_tilted_pyramid_3d, check_constraints, \
     find_initial_velocities_satisfying_constraints
 from tether_model_and_verification import derive_sim_input, dae_sim
-from utils import calc_cartesian_coords_enu, plot_vector, unravel_euler_angles
-import pandas as pd
+from utils import calc_cartesian_coords_enu, plot_vector, unravel_euler_angles, plot_flight_sections, \
+    read_and_transform_flight_data
 
 
 def run_helical_flight():
@@ -59,7 +59,7 @@ def run_helical_flight():
     run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u)
 
 
-def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True):
+def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, df=None):
     t = np.arange(0, n_intervals+1)*tf
 
     sim = dae_sim(tf, n_intervals, dyn)
@@ -75,9 +75,13 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True):
     tether_force = sol_nu*tether_section_lengths[1:, :]
 
     plt.figure()
-    plt.plot(t[1:], tether_force[:, 0])
+    plt.plot(t[1:], tether_force[:, 0], label='sim')
     plt.xlabel("Time [s]")
     plt.ylabel("Tether force ground [N]")
+    if df is not None:
+        plt.plot(df.time, df.ground_tether_force, label='mea')
+        plt.legend()
+        plot_flight_sections(plt.gca(), df)
 
     get_rotation_matrices = ca.Function('get_rotation_matrices', [dyn['x'], dyn['u']],
                                         [dyn['rotation_matrices']['tangential_plane'],
@@ -95,17 +99,23 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True):
 
         ypr[i, :] = unravel_euler_angles(rm_tau2t, '321')
 
-    fig, ax = plt.subplots(3, 1, sharex=True)
+    fig, ax_ypr = plt.subplots(3, 1, sharex=True)
     plt.suptitle("3-2-1 Euler angles between tangential\nand last tether element ref. frame")
-    ax[0].plot(t[1:], ypr[:, 0]*180./np.pi)
-    ax[0].set_ylabel("Yaw [deg]")
-    ax[1].plot(t[1:], ypr[:, 1]*180./np.pi)
-    ax[1].set_ylabel("Pitch [deg]")
-    ax[2].plot(t[1:], ypr[:, 2]*180./np.pi)
-    ax[2].set_ylabel("Roll [deg]")
-    ax[2].set_xlabel("Time [s]")
+    ax_ypr[0].plot(t[1:], ypr[:, 0]*180./np.pi, label='sim')
+    ax_ypr[0].set_ylabel("Yaw [deg]")
+    ax_ypr[1].plot(t[1:], ypr[:, 1]*180./np.pi, label='sim')
+    ax_ypr[1].set_ylabel("Pitch [deg]")
+    ax_ypr[2].plot(t[1:], ypr[:, 2]*180./np.pi, label='sim')
+    ax_ypr[2].set_ylabel("Roll [deg]")
+    ax_ypr[2].set_xlabel("Time [s]")
+    if df is not None:
+        ax_ypr[1].plot(df.time, df.pitch_tau*180./np.pi, label='mea')
+        ax_ypr[2].plot(df.time, df.roll_tau*180./np.pi, label='mea')
+        ax_ypr[2].legend()
+        for a in ax_ypr:
+            plot_flight_sections(a, df)
 
-    plt.figure(figsize=(12, 12))
+    plt.figure(figsize=(8, 6))
     ax3d = plt.axes(projection='3d')
 
     if animate:
@@ -162,11 +172,10 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True):
     ax[1].set_ylabel("z [m]")
     ax[1].axis('equal')
 
-    plt.show()
-
 
 def run_simulation_with_measured_acceleration():
-    x_kite, a_kite = find_accelerations_for_trajectory()
+    df = read_and_transform_flight_data()
+    x_kite, a_kite = find_accelerations_for_trajectory(df)
     r0, r1 = x_kite[0, :3], x_kite[1, :3]
     tf = .1
     n_intervals = a_kite.shape[0]
@@ -198,9 +207,7 @@ def run_simulation_with_measured_acceleration():
     u = np.zeros((n_intervals, 4))
     u[:, 1:] = a_kite
 
-    run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True)
-
-    plt.show()
+    run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, df=df)
 
 
 def setup_integrator_kinematic_model(tf):
@@ -218,43 +225,9 @@ def setup_integrator_kinematic_model(tf):
     return intg
 
 
-def tranform_to_wind_rf(row, cols_in, cols_out, upwind_direction):
-    x, y = row[cols_in[0]], row[cols_in[1]]
-    phi = -upwind_direction-np.pi/2.
-    rm = np.array([
-        [np.cos(phi), np.sin(phi)],
-        [-np.sin(phi), np.cos(phi)],
-    ])
-    return pd.Series(rm.dot(np.array([x, y])), index=cols_out)
-
-
-def find_accelerations_for_trajectory(verify=False):
-    yr, m, d = 2019, 10, 8
-    i_cycle = 65
-    file_name = '{:d}{:02d}{:02d}_{:04d}.csv'.format(yr, m, d, i_cycle)
-
-    df = pd.read_csv(file_name)
-    # print(list(df))
-    df = df[255:625]
-    df = df.interpolate()
-
-    df.plot('time', 'ground_tether_reelout_speed')
-
+def find_accelerations_for_trajectory(df, verify=False):
     n_intervals = df.shape[0]-1
     tf = .1
-
-    df['rz'] = df['kite_height']
-    df['vz'] = -df['kite_0_vz']
-    df['ax'], df['ay'], df['az'] = np.gradient(df['kite_0_vy'])/.1, np.gradient(df['kite_0_vx'])/.1,\
-                                   -np.gradient(df['kite_0_vz'])/.1
-
-    upwind_direction = df.loc[df.index[0], 'est_upwind_direction']
-    df[['rx', 'ry']] = df.apply(tranform_to_wind_rf, args=(['kite_pos_east', 'kite_pos_north'], ['rx', 'ry'],
-                                                           upwind_direction), axis=1)
-    df[['vx', 'vy']] = df.apply(tranform_to_wind_rf, args=(['kite_0_vy', 'kite_0_vx'], ['vx', 'vy'],
-                                                           upwind_direction), axis=1)
-    df[['ax', 'ay']] = df.apply(tranform_to_wind_rf, args=(['ax', 'ay'], ['ax', 'ay'],
-                                                           upwind_direction), axis=1)
 
     intg = setup_integrator_kinematic_model(tf)
 
@@ -296,14 +269,13 @@ def find_accelerations_for_trajectory(verify=False):
             x_sol.append(sol["xf"].T)
         x_sol = np.vstack(x_sol)
 
-        plt.figure(figsize=(12, 12))
+        plt.figure(figsize=(8, 6))
         ax3d = plt.axes(projection='3d')
         ax3d.set_xlim([0, 250])
         ax3d.set_ylim([-125, 125])
         ax3d.set_zlim([0, 250])
         ax3d.plot3D(x_sol[:, 0], x_sol[:, 1], x_sol[:, 2])
         ax3d.plot3D(df['rx'], df['ry'], df['rz'], '--')
-        plt.show()
 
     return states_sol, controls_sol
 
@@ -311,4 +283,4 @@ def find_accelerations_for_trajectory(verify=False):
 if __name__ == "__main__":
     # run_helical_flight()
     run_simulation_with_measured_acceleration()
-    # plt.show()
+    plt.show()
