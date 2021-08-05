@@ -3,6 +3,7 @@ from casadi.casadi import Opti
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
+from generate_initial_state import get_pyramid, get_tilted_pyramid, get_moving_pyramid, check_constraints
 
 rho = 1.225
 g = 9.81
@@ -13,22 +14,12 @@ rho_t = 724.
 cd_t = 1.1
 
 
-def check_constraints(dyn, x0, u0=0):
-    cons_x0 = ca.Function('f', [dyn['x'], dyn['u']], [dyn['g'], dyn['dg']])(x0, u0)
-    max_g = np.amax(np.abs(np.array(cons_x0[0])))
-    print("Max. tether length constraints: {:.2E}".format(max_g))
-    max_dg = np.amax(np.abs(np.array(cons_x0[1])))
-    print("Max. tether speed constraints: {:.2E}".format(max_dg))
-    assert max_g < 1e-5
-    assert max_dg < 1e-5
-
-
 def get_catenary_sag(x, tether_force_center):
     a = tether_force_center/(g*rho_t*np.pi*d_t**2/4)
     return a * np.cosh((x-x[-1]/2)/a) - a * np.cosh(x[-1]/2/a)
 
 
-def derive_sim_input(n_sections, fix_end=False, explicit=True, include_drag=True, omega=None, vwx=0):
+def derive_sim_input(n_sections, fix_end=False, explicit=True, include_drag=True, omega=None, vwx=0, impose_acceleration_directly=False):
     vw = ca.vertcat(vwx, 0, 0)
 
     # States
@@ -45,7 +36,12 @@ def derive_sim_input(n_sections, fix_end=False, explicit=True, include_drag=True
 
     # Controls
     ddl = ca.SX.sym('ddl')
-    u = ddl
+    if impose_acceleration_directly:
+        assert omega is None, "Setting omega already imposes the acceleration of the last point mass."
+        a_end = ca.SX.sym('a_end', 3)
+        u = ca.vertcat(ddl, a_end)
+    else:
+        u = ddl
 
     fa = ca.SX.zeros(1, 3)  #sym('fa', 1, 3)  # Aerodynamic force of the kite could be added here.
 
@@ -97,15 +93,17 @@ def derive_sim_input(n_sections, fix_end=False, explicit=True, include_drag=True
             point_mass = m_s
 
         e_k = e_k + .5 * point_mass * ca.dot(vi, vi)
-        if not (i == n_sections - 1 and omega is not None):
+        if not (i == n_sections - 1 and (omega is not None or impose_acceleration_directly)):
             e_p = e_p + point_mass * zi * g
         else:
             print("Resultant force on last mass point is imposed, i.e. gravity and tether forces etc. on last mass "
-                  "point are discarded.")
+                  "point are not included explicitly.")
 
         if i == n_sections - 1:
             if omega is not None:
                 fi = ca.cross(omega, vi)*point_mass  # Centripetal force w/o tether drag and aerodynamic force of kite.
+            elif impose_acceleration_directly:
+                fi = a_end.T*point_mass
             else:
                 fi = d_s[i, :]/2 + fa
         else:
@@ -152,7 +150,7 @@ def derive_sim_input(n_sections, fix_end=False, explicit=True, include_drag=True
     a0 = ca.horzcat(a00, a10.T)
     a1 = ca.horzcat(a10, ca.SX.zeros((n_sections, n_sections)))
     a = ca.vertcat(a0, a1)
-    if not fix_end and omega is not None:  # Set tether force on last point mass to zero
+    if not fix_end and (omega is not None or impose_acceleration_directly):  # Set tether force on last point mass to zero
         a[(n_sections-1)*3:n_sections*3, -1] = 0
 
     c0 = f - ca.jacobian(e_p, r).T
@@ -308,7 +306,7 @@ def dae_sim(tf, n_intervals, dyn):
     z = ca.vertcat(a, nu)
 
     f_z = dyn['a'] @ z - dyn['c']
-    f_x = ca.vertcat(dyn['x'][dyn['n_free_pm']*3:dyn['n_free_pm']*6], a, dyn['x'][dyn['n_free_pm']*6+1], dyn['u'])
+    f_x = ca.vertcat(dyn['x'][dyn['n_free_pm']*3:dyn['n_free_pm']*6], a, dyn['x'][dyn['n_free_pm']*6+1], dyn['u'][0])
 
     # Create an integrator
     dae = {'x': dyn['x'], 'z': z, 'p': dyn['u'], 'ode': f_x, 'alg': f_z}
@@ -340,9 +338,9 @@ def dae_sim(tf, n_intervals, dyn):
     return ca.Function('sim', [x0, u], [x_sol, nu_sol])
 
 
-def run_simulation(integrator=2):
+def run_simulation(integrator=1):
     import time
-    n_sections = 5
+    n_sections = 3
     animate = True
     catenary_validation = True
     reel_out_test = False
@@ -358,7 +356,7 @@ def run_simulation(integrator=2):
     if fix_end:
         n_free_pm = n_sections-1
         r = np.zeros((n_free_pm, 3))
-        x, z = get_triangle(l0, fix_end, n_sections)
+        x, z = get_pyramid(l0, fix_end, n_sections)
         r[:, 0] = x[:-1]
         r[:, 2] = z[:-1]
         v = np.zeros((n_free_pm, 3))
@@ -491,7 +489,7 @@ def static_state_analysis():
     if fix_end:
         n_free_pm = n_sections-1
         r = np.zeros((n_free_pm, 3))
-        x, z = get_triangle(l, fix_end, n_sections)
+        x, z = get_pyramid(l, fix_end, n_sections)
         r[:, 0] = x[:-1]
         r[:, 2] = z[:-1]
         v = np.zeros((n_free_pm, 3))
@@ -660,7 +658,7 @@ def quasi_steady_state_analysis_fixed_end(print_solution=False):
     l = 65
     fix_end_coords = [-20, 0, 50]
     print("Min tether length:", np.sum(np.array(fix_end_coords)**2)**.5)
-    z, x = get_tilted_triangle(l, fix_end_coords[2], fix_end_coords[0], n_sections)
+    z, x = get_tilted_pyramid(l, fix_end_coords[2], fix_end_coords[0], n_sections)
     n_free_pm = n_sections-1
 
     r = np.zeros((n_free_pm, 3))
@@ -790,7 +788,7 @@ def run_simulation_dae():
 
     vz_end = (start_position_end[2]/l0)**.5 * dl0
     print("Expected end height: {:.2f} m".format(vz_end*sim_time+start_position_end[2]))
-    z, x, vz, vx = get_moving_triangle(l0, start_position_end[2], start_position_end[0], dl0, vz_end, n_sections)
+    z, x, vz, vx = get_moving_pyramid(l0, start_position_end[2], start_position_end[0], dl0, vz_end, n_sections)
     n_free_pm = n_sections-1
 
     r = np.zeros((n_free_pm+1, 3))
@@ -919,9 +917,9 @@ def run_simulation_skip_rope():
 
 
 if __name__ == "__main__":
-    # run_simulation()
+    run_simulation()
     # static_state_analysis()
     # quasi_steady_state_analysis_fixed_end()
-    run_simulation_dae()
+    # run_simulation_dae()
     # run_simulation_skip_rope()
     plt.show()
