@@ -161,8 +161,6 @@ def read_and_transform_flight_data():
         df['yaw'] = rpy[df.index[0]:df.index[-1]+1, 2]
     df['pitch_tau'], df['roll_tau'] = calc_rpy_wrt_tangential_plane(df)
 
-    df.plot('time', 'ground_tether_reelout_speed')
-
     df['rz'] = df['kite_height']
     df['vz'] = -df['kite_0_vz']
     df['ax'], df['ay'], df['az'] = np.gradient(df['kite_0_vy'])/.1, np.gradient(df['kite_0_vx'])/.1,\

@@ -7,7 +7,6 @@ from generate_initial_state import get_pyramid, get_tilted_pyramid, get_moving_p
 
 rho = 1.225
 g = 9.81
-m_k = 20
 
 d_t = .01
 rho_t = 724.
@@ -19,14 +18,14 @@ def get_catenary_sag(x, tether_force_center):
     return a * np.cosh((x-x[-1]/2)/a) - a * np.cosh(x[-1]/2/a)
 
 
-def derive_sim_input(n_sections, fix_end=False, explicit=True, include_drag=True, omega=None, vwx=0, impose_acceleration_directly=False):
+def derive_tether_model(n_elements, fix_end=False, explicit=True, include_drag=True, omega=None, vwx=0, impose_acceleration_directly=False):
     vw = ca.vertcat(vwx, 0, 0)
 
     # States
     if fix_end:
-        n_free_point_masses = n_sections - 1
+        n_free_point_masses = n_elements - 1
     else:
-        n_free_point_masses = n_sections
+        n_free_point_masses = n_elements
     r = ca.SX.sym('r', n_free_point_masses, 3)
     v = ca.SX.sym('v', n_free_point_masses, 3)
 
@@ -43,18 +42,16 @@ def derive_sim_input(n_sections, fix_end=False, explicit=True, include_drag=True
     else:
         u = ddl
 
-    fa = ca.SX.zeros(1, 3)  #sym('fa', 1, 3)  # Aerodynamic force of the kite could be added here.
-
-    l_s = l / n_sections
-    dl_s = dl / n_sections
-    ddl_s = ddl / n_sections
+    l_s = l / n_elements
+    dl_s = dl / n_elements
+    ddl_s = ddl / n_elements
 
     m_s = np.pi*d_t**2/4 * l_s * rho_t
 
     if include_drag:
-        # Determine drag on each tether section
+        # Determine drag on each tether element
         d_s = []
-        for i in range(n_sections):
+        for i in range(n_elements):
             if i == 0:
                 v0 = ca.SX.zeros((1, 3))
             else:
@@ -68,7 +65,7 @@ def derive_sim_input(n_sections, fix_end=False, explicit=True, include_drag=True
             d_s.append(-.5*rho*d_t*l_s*cd_t*ca.norm_2(va)*va)
         d_s = ca.vcat(d_s)
     else:
-        d_s = ca.SX.zeros(n_sections, 3)
+        d_s = ca.SX.zeros(n_elements, 3)
 
     e_k = 0
     e_p = 0
@@ -76,7 +73,7 @@ def derive_sim_input(n_sections, fix_end=False, explicit=True, include_drag=True
     tether_lengths = []
     tether_length_constraints = []
 
-    for i in range(n_sections):
+    for i in range(n_elements):
         if fix_end and i == n_free_point_masses:
             if isinstance(fix_end, list):
                 zi = fix_end[2]
@@ -86,36 +83,37 @@ def derive_sim_input(n_sections, fix_end=False, explicit=True, include_drag=True
         else:
             zi = r[i, 2]
             vi = v[i, :]
+        vai = vi - vw.T
 
-        if i == n_sections - 1:
-            point_mass = m_s/2 + m_k
+        if i == n_elements - 1:
+            point_mass = m_s/2 # + m_kite
         else:
             point_mass = m_s
 
         e_k = e_k + .5 * point_mass * ca.dot(vi, vi)
-        if not (i == n_sections - 1 and (omega is not None or impose_acceleration_directly)):
+        if not (i == n_elements - 1 and (omega is not None or impose_acceleration_directly)):
             e_p = e_p + point_mass * zi * g
         else:
             print("Resultant force on last mass point is imposed, i.e. gravity and tether forces etc. on last mass "
                   "point are not included explicitly.")
 
-        if i == n_sections - 1:
+        if i == n_elements - 1:
             if omega is not None:
                 fi = ca.cross(omega, vi)*point_mass  # Centripetal force w/o tether drag and aerodynamic force of kite.
             elif impose_acceleration_directly:
                 fi = a_end.T*point_mass
             else:
-                fi = d_s[i, :]/2 + fa
+                fi = d_s[i, :]/2  # + fa_kite
         else:
             fi = (d_s[i, :] + d_s[i+1, :])/2
-        if not (fix_end and i == n_sections - 1):
+        if not (fix_end and i == n_elements - 1):
             f.append(fi)
 
         if i == 0:
             ri0 = ca.SX.zeros((1, 3))
         else:
             ri0 = r[i-1, :]
-        if fix_end and i == n_sections - 1:
+        if fix_end and i == n_elements - 1:
             if isinstance(fix_end, list):
                 rif = ca.hcat(fix_end)
             else:
@@ -126,14 +124,14 @@ def derive_sim_input(n_sections, fix_end=False, explicit=True, include_drag=True
         tether_lengths.append(dri)
         tether_length_constraints.append(.5 * (ca.dot(dri, dri) - l_s**2))
 
-        if i == n_sections - 1:
+        if i == n_elements - 1:
             ez_end_sec = dri/ca.norm_2(dri)
-            ey_end_sec = ca.cross(ez_end_sec, vi)/ca.norm_2(ca.cross(ez_end_sec, vi))
+            ey_end_sec = ca.cross(ez_end_sec, vai)/ca.norm_2(ca.cross(ez_end_sec, vai))
             ex_end_sec = ca.cross(ey_end_sec, ez_end_sec)
             dcm_end_sec = ca.horzcat(ex_end_sec.T, ey_end_sec.T, ez_end_sec.T)
 
             ez_tau = rif/ca.norm_2(rif)
-            ey_tau = ca.cross(ez_tau, vi)/ca.norm_2(ca.cross(ez_tau, vi))
+            ey_tau = ca.cross(ez_tau, vai)/ca.norm_2(ca.cross(ez_tau, vai))
             ex_tau = ca.cross(ey_tau, ez_tau)
             dcm_tau = ca.horzcat(ex_tau.T, ey_tau.T, ez_tau.T)
 
@@ -148,16 +146,16 @@ def derive_sim_input(n_sections, fix_end=False, explicit=True, include_drag=True
     a00 = ca.jacobian(ca.jacobian(e_k, v), v)
     a10 = ca.jacobian(tether_length_constraints, r)
     a0 = ca.horzcat(a00, a10.T)
-    a1 = ca.horzcat(a10, ca.SX.zeros((n_sections, n_sections)))
+    a1 = ca.horzcat(a10, ca.SX.zeros((n_elements, n_elements)))
     a = ca.vertcat(a0, a1)
     if not fix_end and (omega is not None or impose_acceleration_directly):  # Set tether force on last point mass to zero
-        a[(n_sections-1)*3:n_sections*3, -1] = 0
+        a[(n_elements - 1) * 3:n_elements * 3, -1] = 0
 
     c0 = f - ca.jacobian(e_p, r).T
-    c1 = -ca.jacobian(a10@v, r)@v + (dl_s**2 + l_s*ddl_s) * ca.SX.ones(n_sections, 1)
+    c1 = -ca.jacobian(a10@v, r)@v + (dl_s**2 + l_s*ddl_s) * ca.SX.ones(n_elements, 1)
     c = ca.vertcat(c0, c1)
 
-    tether_speed_constraints = a10@v - l_s*dl_s * ca.SX.ones(n_sections, 1)
+    tether_speed_constraints = a10@v - l_s*dl_s * ca.SX.ones(n_elements, 1)
 
     if explicit:
         b = ca.mtimes(ca.inv(a), c)
@@ -169,7 +167,7 @@ def derive_sim_input(n_sections, fix_end=False, explicit=True, include_drag=True
             'rhs': rhs,
             'nu': nu,
             'b': b,
-            'n_sections': n_sections,
+            'n_elements': n_elements,
         }
     else:
         res = {
@@ -181,11 +179,11 @@ def derive_sim_input(n_sections, fix_end=False, explicit=True, include_drag=True
             'g': tether_length_constraints,
             'dg': tether_speed_constraints,
             'n_free_pm': n_free_point_masses,
-            'n_sections': n_sections,
+            'n_elements': n_elements,
             'tether_lengths': tether_lengths,
             'rotation_matrices': {
                 'tangential_plane': dcm_tau,
-                'end_section': dcm_end_sec,
+                'last_element': dcm_end_sec,
             }
         }
     return res
@@ -206,7 +204,7 @@ def collocation_integration(dt, x0, control_input, model, nu_init=None):
     x_init[n_free_pm*3+2:n_free_pm*6:3] = x_init[n_free_pm*3+2:n_free_pm*6:3] + 1e-6
     opti.set_initial(z, np.repeat(x_init, degree+1, axis=1))
     xc = z[:, 1:]
-    nuc = opti.variable(model['n_sections'], degree)
+    nuc = opti.variable(model['n_elements'], degree)
     if nu_init is not None:
         opti.set_initial(nuc, np.repeat(nu_init, degree, axis=1))
 
@@ -245,7 +243,7 @@ def find_steady_state(dyn, l, dl, x_init):
     opti.set_initial(v_ss, x_init[dyn['n_free_pm']*3:dyn['n_free_pm']*6])
     ss = ca.vertcat(r_ss, v_ss, l, dl)
 
-    nu = opti.variable(dyn['n_sections'])
+    nu = opti.variable(dyn['n_elements'])
 
     fun_mat = ca.Function('f_mat', [dyn['x'], dyn['u']], [dyn['a10'], dyn['c'], dyn['g'], dyn['dg']])
     a10, c, g, dg = fun_mat(ss, 0)
@@ -267,8 +265,8 @@ def find_steady_state(dyn, l, dl, x_init):
     return opt_succeeded, np.array(get_values(ss)), np.array(get_values(nu))
 
 
-def ode_sim(tf, n_intervals, n_sections, fix_end, include_drag=True):
-    dyn = derive_sim_input(n_sections, fix_end, include_drag=include_drag)
+def ode_sim(tf, n_intervals, n_elements, fix_end, include_drag=True):
+    dyn = derive_tether_model(n_elements, fix_end, include_drag=include_drag)
     fun_nu = ca.Function('f', [dyn['x'], dyn['u']], [dyn['nu'].T])
     ode = {'x': dyn['x'], 'ode': dyn['rhs'], 'p': dyn['u']}
     intg = ca.integrator('intg', 'cvodes', ode, {"tf": tf})
@@ -302,7 +300,7 @@ def ode_sim(tf, n_intervals, n_sections, fix_end, include_drag=True):
 def dae_sim(tf, n_intervals, dyn):
     # Returns nu at end of intervals
     a = ca.vec(ca.SX.sym('a', dyn['n_free_pm'], 3).T)
-    nu = ca.SX.sym('nu', dyn['n_sections'])
+    nu = ca.SX.sym('nu', dyn['n_elements'])
     z = ca.vertcat(a, nu)
 
     f_z = dyn['a'] @ z - dyn['c']
@@ -340,7 +338,7 @@ def dae_sim(tf, n_intervals, dyn):
 
 def run_simulation(integrator=1):
     import time
-    n_sections = 3
+    n_elements = 3
     animate = True
     catenary_validation = True
     reel_out_test = False
@@ -354,17 +352,17 @@ def run_simulation(integrator=1):
     dl0 = 0
     assert dl0 == 0, "Current starting point only valid for zero reel-out speed"
     if fix_end:
-        n_free_pm = n_sections-1
+        n_free_pm = n_elements-1
         r = np.zeros((n_free_pm, 3))
-        x, z = get_pyramid(l0, fix_end, n_sections)
+        x, z = get_pyramid(l0, fix_end, n_elements)
         r[:, 0] = x[:-1]
         r[:, 2] = z[:-1]
         v = np.zeros((n_free_pm, 3))
     else:
-        n_free_pm = n_sections
-        r = np.zeros((n_sections, 3))
-        r[:, 0] = np.linspace(0, l0, n_sections+1)[1:]
-        v = np.zeros((n_sections, 3))
+        n_free_pm = n_elements
+        r = np.zeros((n_elements, 3))
+        r[:, 0] = np.linspace(0, l0, n_elements+1)[1:]
+        v = np.zeros((n_elements, 3))
     x0 = np.vstack((r.reshape((-1, 1)), v.reshape((-1, 1)), [[l0], [dl0]]))
 
     # Run simulation
@@ -374,10 +372,10 @@ def run_simulation(integrator=1):
 
     sol_nu = None
     if integrator == 0:
-        dyn = derive_sim_input(n_sections, fix_end, False)
+        dyn = derive_tether_model(n_elements, fix_end, False)
         fun_mat = ca.Function('f_mat', [dyn['x'], dyn['u']], [dyn['a'], dyn['c']])
         n_states = x0.shape[0]
-        model = {'n_states': n_states, 'n_sections': n_sections, 'n_free_point_masses': n_free_pm, 'fun_mat': fun_mat}
+        model = {'n_states': n_states, 'n_elements': n_elements, 'n_free_point_masses': n_free_pm, 'fun_mat': fun_mat}
         nu0 = None
         sol_x = x0.T
 
@@ -393,17 +391,17 @@ def run_simulation(integrator=1):
             sol_x = np.vstack((sol_x, sol_xk[:, -1]))
         print('DAE time spent: ', time.monotonic() - start_time)
     elif integrator == 1:
-        sim = ode_sim(tf, n_intervals, n_sections, fix_end)
+        sim = ode_sim(tf, n_intervals, n_elements, fix_end)
         start_time = time.monotonic()
         res = sim(x0, u)
         print('ODE time spent: ', time.monotonic() - start_time)
         sol_x = np.array(res[0])
     elif integrator == 2:
-        sim = ode_sim(1e-3, 1, n_sections, fix_end, include_drag=False)
+        sim = ode_sim(1e-3, 1, n_elements, fix_end, include_drag=False)
         res = sim(x0, u[:1, :])
         x0 = np.array(res[0][1:, :].T)
 
-        dyn = derive_sim_input(n_sections, fix_end, False)
+        dyn = derive_tether_model(n_elements, fix_end, False)
         sim = dae_sim(tf, n_intervals, dyn)
         start_time = time.monotonic()
         sol_x, sol_nu = sim(x0, u)
@@ -416,9 +414,9 @@ def run_simulation(integrator=1):
         ry = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, 1:n_free_pm*3:3], np.zeros((n_intervals+1, 1))))
         rz = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, 2:n_free_pm*3:3], np.zeros((n_intervals+1, 1))))
     else:
-        rx = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, :n_sections*3:3]))
-        ry = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, 1:n_sections*3:3]))
-        rz = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, 2:n_sections*3:3]))
+        rx = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, :n_elements*3:3]))
+        ry = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, 1:n_elements*3:3]))
+        rz = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, 2:n_elements*3:3]))
 
     if animate:
         ax = plt.figure().gca()
@@ -441,8 +439,8 @@ def run_simulation(integrator=1):
     plt.ylabel("Tether force [N]")
 
     if fix_end and catenary_validation:
-        assert n_sections % 2 == 1
-        tether_force_center = np.mean(tether_force[-100:, (n_sections-1)//2])
+        assert n_elements % 2 == 1
+        tether_force_center = np.mean(tether_force[-100:, (n_elements-1)//2])
 
         plt.figure()
         plt.plot(rx[-1, :], rz[-1, :])
@@ -450,9 +448,9 @@ def run_simulation(integrator=1):
         y = get_catenary_sag(x, tether_force_center)
         plt.plot(x, y, '--')
 
-    dyn = derive_sim_input(n_sections, fix_end, False)
+    dyn = derive_tether_model(n_elements, fix_end, False)
     get_a10 = ca.Function('get_a10', [dyn['x'], dyn['u']], [dyn['a10']])
-    dl = np.empty((0, n_sections))
+    dl = np.empty((0, n_elements))
     for xk, uk, rxk, ryk, rzk in zip(sol_x[1:, :], u, rx[1:, :], ry[1:, :], rz[1:, :]):
         l_s = ((rxk[1:] - rxk[:-1])**2 + (ryk[1:] - ryk[:-1])**2 + (rzk[1:] - rzk[:-1])**2)**.5
         a10k = np.array(get_a10(xk, uk))
@@ -465,7 +463,7 @@ def run_simulation(integrator=1):
     ax[0, 0].set_title("Tether length")
     ax[0, 0].plot(t, np.sum(l, axis=1), label='sum')
     ax[0, 0].plot(t, sol_x[:, n_free_pm*6], '--', label='state')
-    ax[1, 0].set_title("Section length")
+    ax[1, 0].set_title("Tether element length")
     ax[1, 0].plot(t, l)
     ax[1, 0].set_xlabel('Time [s]')
 
@@ -473,13 +471,13 @@ def run_simulation(integrator=1):
     ax[0, 1].plot(t[1:], np.sum(dl, axis=1), label='sum')
     ax[0, 1].plot(t, sol_x[:, n_free_pm*6+1], '--', label='state')
     ax[0, 1].legend()
-    ax[1, 1].set_title("Section speed")
+    ax[1, 1].set_title("Tether element speed")
     ax[1, 1].plot(t[1:], dl)
     ax[1, 1].set_xlabel('Time [s]')
 
 
 def static_state_analysis():
-    n_sections = 5
+    n_elements = 5
     # Getting appropriate guess for the steady state, finding the exact steady state, and plotting the results.
     l = 75
     dl = 0
@@ -487,30 +485,30 @@ def static_state_analysis():
 
     # Construct starting point
     if fix_end:
-        n_free_pm = n_sections-1
+        n_free_pm = n_elements-1
         r = np.zeros((n_free_pm, 3))
-        x, z = get_pyramid(l, fix_end, n_sections)
+        x, z = get_pyramid(l, fix_end, n_elements)
         r[:, 0] = x[:-1]
         r[:, 2] = z[:-1]
         v = np.zeros((n_free_pm, 3))
     else:
-        n_free_pm = n_sections
-        r = np.zeros((n_sections, 3))
+        n_free_pm = n_elements
+        r = np.zeros((n_elements, 3))
         theta = 80*np.pi/180.
-        r[:, 0] = np.linspace(0, l, n_sections+1)[1:]*np.sin(theta)
-        r[:, 2] = np.linspace(0, l, n_sections+1)[1:]*-np.cos(theta)
-        v = np.zeros((n_sections, 3))
+        r[:, 0] = np.linspace(0, l, n_elements+1)[1:]*np.sin(theta)
+        r[:, 2] = np.linspace(0, l, n_elements+1)[1:]*-np.cos(theta)
+        v = np.zeros((n_elements, 3))
     x0 = np.vstack((r.reshape((-1, 1)), v.reshape((-1, 1)), [[l], [dl]]))
 
     # Simulation can not cope with starting state without velocity when drag is included, therefore first let the model
     # run shortly without drag.
-    sim = ode_sim(1e-3, 1, n_sections, fix_end, include_drag=False)
+    sim = ode_sim(1e-3, 1, n_elements, fix_end, include_drag=False)
     res = sim(x0, 0)
     x0 = np.array(res[0][1:, :].T)
 
     # Next, run the model with drag for a bit longer to get a better approximation of the steady state.
     n_intervals = 10
-    dyn = derive_sim_input(n_sections, fix_end, False)
+    dyn = derive_tether_model(n_elements, fix_end, False)
     sim = dae_sim(.3, n_intervals, dyn)
     u = np.zeros((n_intervals, 1))
     sol_x, sol_nu = sim(x0, u)
@@ -533,14 +531,14 @@ def static_state_analysis():
     plt.plot(rx, rz)
 
     if fix_end:
-        if n_sections % 2 == 1:
-            l_s = l/n_sections
-            tether_force_center = sol_nu[(n_sections-1)//2]*l_s
+        if n_elements % 2 == 1:
+            l_s = l/n_elements
+            tether_force_center = sol_nu[(n_elements-1)//2]*l_s
             x = np.linspace(0, fix_end)
             y = get_catenary_sag(x, tether_force_center)
             plt.plot(x, y, '--')
 
-        export_dict = {'x': sol_ss, 'nu': sol_nu, 'tether_length': l, 'fix_end': fix_end, 'n_sections': n_sections}
+        export_dict = {'x': sol_ss, 'nu': sol_nu, 'tether_length': l, 'fix_end': fix_end, 'n_elements': n_elements}
         with open("catenary.pickle", 'wb') as f:
             pickle.dump(export_dict, f)
 
@@ -550,7 +548,7 @@ def static_state_analysis():
 
 def find_quasi_steady_state_fixed_end(dyn, omega, l, dl, fix_end_in_derivation, r_init):
     # For now no tether speed
-    n_pm_opt = dyn['n_sections']-1
+    n_pm_opt = dyn['n_elements']-1
 
     opti = Opti()
 
@@ -585,7 +583,7 @@ def find_quasi_steady_state_fixed_end(dyn, omega, l, dl, fix_end_in_derivation, 
     opti.set_initial(v_qss, v_init.reshape(-1))
     opti.set_initial(a_qss, a_init.reshape(-1))
 
-    nu = opti.variable(dyn['n_sections'])
+    nu = opti.variable(dyn['n_elements'])
 
     fun_mat = ca.Function('f_mat', [dyn['x'], dyn['u']], [dyn['a'], dyn['c'], dyn['g'], dyn['dg']])
     a, c, g, dg = fun_mat(qss, 0)
@@ -609,7 +607,7 @@ def find_quasi_steady_state_fixed_end(dyn, omega, l, dl, fix_end_in_derivation, 
     r_all = ca.vertcat([0]*3, r_qss)
     if not fix_end_in_derivation:
         r_all = ca.vertcat(r_all, r_end)
-    opti.subject_to((r_all[5::3]-r_all[2:-3:3])**2 < (l/dyn['n_sections'])**2)  # No vertical tether sections.
+    opti.subject_to((r_all[5::3]-r_all[2:-3:3])**2 < (l/dyn['n_elements'])**2)  # No vertical tether elements.
 
     velocity_errors = []
     acceleration_errors = []
@@ -646,7 +644,7 @@ def find_quasi_steady_state_fixed_end(dyn, omega, l, dl, fix_end_in_derivation, 
 
 
 def quasi_steady_state_analysis_fixed_end(print_solution=False):
-    n_sections = 30
+    n_elements = 30
 
     # For 'free' end:
     dl = 0
@@ -658,8 +656,8 @@ def quasi_steady_state_analysis_fixed_end(print_solution=False):
     l = 65
     fix_end_coords = [-20, 0, 50]
     print("Min tether length:", np.sum(np.array(fix_end_coords)**2)**.5)
-    z, x = get_tilted_pyramid(l, fix_end_coords[2], fix_end_coords[0], n_sections)
-    n_free_pm = n_sections-1
+    z, x = get_tilted_pyramid(l, fix_end_coords[2], fix_end_coords[0], n_elements)
+    n_free_pm = n_elements-1
 
     r = np.zeros((n_free_pm, 3))
     r[:, 0] = x[:-1]
@@ -671,7 +669,7 @@ def quasi_steady_state_analysis_fixed_end(print_solution=False):
     else:
         fix_end_in_derivation = fix_end_coords
 
-    dyn = derive_sim_input(n_sections, fix_end_in_derivation, False)
+    dyn = derive_tether_model(n_elements, fix_end_in_derivation, False)
     success, sol_r, sol_v, sol_a, sol_nu, kinematics_end = find_quasi_steady_state_fixed_end(dyn, omega, l, dl, fix_end_in_derivation, r)
     eval_quasi_steady_state_fixed_end(dyn, omega, l, dl, fix_end_in_derivation, sol_r, sol_v, sol_a, sol_nu, kinematics_end)
     sol_r = sol_r.reshape((-1, 3))
@@ -695,9 +693,9 @@ def quasi_steady_state_analysis_fixed_end(print_solution=False):
     ry = np.hstack(([0], sol_r[:, 1], [fix_end_coords[1]]))
     rz = np.hstack(([0], sol_r[:, 2], [fix_end_coords[2]]))
 
-    # print((rx[1:]-rx[:-1])/(l/n_sections))
-    # print((ry[1:]-ry[:-1])/(l/n_sections))
-    # print((rz[1:]-rz[:-1])/(l/n_sections))
+    # print((rx[1:]-rx[:-1])/(l/n_elements))
+    # print((ry[1:]-ry[:-1])/(l/n_elements))
+    # print((rz[1:]-rz[:-1])/(l/n_elements))
 
     plt.plot(rx, rz, 's-')
     plt.plot(ry, rz, 's-')
@@ -714,7 +712,7 @@ def quasi_steady_state_analysis_fixed_end(print_solution=False):
 
 def eval_quasi_steady_state_fixed_end(dyn, omega, l, dl, fix_end_in_derivation, r_qss, v_qss, a_qss, nu, kinematics_end):
     # For now no tether speed
-    n_pm_opt = dyn['n_sections']-1
+    n_pm_opt = dyn['n_elements']-1
 
     if fix_end_in_derivation:
         qss = ca.vertcat(r_qss, v_qss, l, dl)
@@ -764,7 +762,7 @@ def eval_quasi_steady_state_fixed_end(dyn, omega, l, dl, fix_end_in_derivation, 
 
 def run_simulation_dae():
     # dae part of run_simulation()
-    n_sections = 30
+    n_elements = 30
     start_position_end = [-20, 0, 50]  #False  #60 #-10, 0, 60]
     omega = np.array([[0, 0, .8]])
     angular_speed = np.linalg.norm(omega)
@@ -780,16 +778,16 @@ def run_simulation_dae():
     dl0 = 1
 
     # r = np.zeros((n_point_masses, 3))
-    # r[:, 0] = np.linspace(0, l0, n_sections+1)[1:]
+    # r[:, 0] = np.linspace(0, l0, n_elements+1)[1:]
     # v = np.zeros((n_point_masses, 3))
-    # v[:, 2] = np.linspace(0, .1, n_sections+1)[1:]
+    # v[:, 2] = np.linspace(0, .1, n_elements+1)[1:]
     #
     # x0 = np.vstack((r.reshape((-1, 1)), v.reshape((-1, 1)), [[l0], [dl0]]))
 
     vz_end = (start_position_end[2]/l0)**.5 * dl0
     print("Expected end height: {:.2f} m".format(vz_end*sim_time+start_position_end[2]))
-    z, x, vz, vx = get_moving_pyramid(l0, start_position_end[2], start_position_end[0], dl0, vz_end, n_sections)
-    n_free_pm = n_sections-1
+    z, x, vz, vx = get_moving_pyramid(l0, start_position_end[2], start_position_end[0], dl0, vz_end, n_elements)
+    n_free_pm = n_elements-1
 
     r = np.zeros((n_free_pm+1, 3))
     r[:, 0] = x
@@ -811,7 +809,7 @@ def run_simulation_dae():
         fix_end_in_derivation = False
     else:
         fix_end_in_derivation = start_position_end
-    dyn = derive_sim_input(n_sections, fix_end_in_derivation, False, omega=omega)
+    dyn = derive_tether_model(n_elements, fix_end_in_derivation, False, omega=omega)
     check_constraints(dyn, x0)
 
     sim = dae_sim(tf, n_intervals, dyn)
@@ -819,9 +817,9 @@ def run_simulation_dae():
     sol_x = np.array(sol_x)
     sol_nu = np.array(sol_nu)
 
-    rx = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, :n_sections*3:3]))
-    ry = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, 1:n_sections*3:3]))
-    rz = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, 2:n_sections*3:3]))
+    rx = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, :n_elements*3:3]))
+    ry = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, 1:n_elements*3:3]))
+    rz = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, 2:n_elements*3:3]))
 
     # plt.title("Radial position of tether free end")
     # plt.plot((rx[:, -1]**2+rz[:, -1]**2)**.5)
@@ -866,8 +864,8 @@ def run_simulation_skip_rope():
     # Get starting position
     with open("catenary.pickle", 'rb') as f:
         catenary_sol = pickle.load(f)
-    n_sections = catenary_sol['n_sections']
-    n_free_pm = catenary_sol['n_sections']-1
+    n_elements = catenary_sol['n_elements']
+    n_free_pm = catenary_sol['n_elements']-1
     l = catenary_sol['tether_length']
     r = catenary_sol['x'][:n_free_pm*3]
 
@@ -880,7 +878,7 @@ def run_simulation_skip_rope():
     # Run simulation
     u = np.zeros((n_intervals, 1))
 
-    dyn = derive_sim_input(n_sections, fix_end, False)
+    dyn = derive_tether_model(n_elements, fix_end, False)
     sim = dae_sim(tf, n_intervals, dyn)
     sol_x, sol_nu = sim(x0, u)
     sol_x = np.array(sol_x)

@@ -2,8 +2,8 @@
 clc;
 clear all;
 
-n_sections = 3;
-n_point_masses = n_sections;
+n_elements = 3;
+n_point_masses = n_elements;
 
 vwx = sym('vwx');
 vw = [vwx; 0; 0];
@@ -15,9 +15,9 @@ l_t = sym('l_t');
 dl_t = sym('dl_t');
 ddl_t = sym('ddl_t');
 
-l_s = l_t/n_sections;
-dl_s = dl_t/n_sections;
-ddl_s = ddl_t/n_sections;
+l_s = l_t/n_elements;
+dl_s = dl_t/n_elements;
+ddl_s = ddl_t/n_elements;
 
 d_t = sym('d_t');
 rho_t = sym('rho_t');
@@ -31,7 +31,7 @@ fa = sym('fa', [1 3]);
 r = sym('r', [n_point_masses, 3]);
 v = sym('v', [n_point_masses, 3]);
 
-% Determine drag on each tether section
+% Determine drag on each tether element
 d_s = [];
 for i = 1:n_point_masses
     if i == 1
@@ -87,7 +87,7 @@ f = f.'; f = f(:);
 a00 = jacobian(jacobian(e_k, v), v)
 a10 = jacobian(c, r)
 b0 = f - jacobian(e_p, r).'
-b1 = -jacobian(a10*v, r)*v + (dl_s^2 + l_s*ddl_s) * ones(n_sections, 1)
+b1 = -jacobian(a10*v, r)*v + (dl_s^2 + l_s*ddl_s) * ones(n_elements, 1)
 dl_s = a10*v/l_s
 
 

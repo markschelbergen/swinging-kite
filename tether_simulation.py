@@ -4,14 +4,14 @@ import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 from generate_initial_state import get_moving_pyramid, get_tilted_pyramid_3d, check_constraints, \
     find_initial_velocities_satisfying_constraints
-from tether_model_and_verification import derive_sim_input, dae_sim
+from tether_model_and_verification import derive_tether_model, dae_sim
 from utils import calc_cartesian_coords_enu, plot_vector, unravel_euler_angles, plot_flight_sections, \
     read_and_transform_flight_data
 
 
 def run_helical_flight():
     """"Imposing acceleration for turn with constant speed on last point mass to evaluate tether dynamics."""
-    n_sections = 100
+    n_elements = 100
     elevation_rotation_axis = 30*np.pi/180.
     turning_radius = 25
     r0_kite = 100
@@ -37,8 +37,8 @@ def run_helical_flight():
 
     assert start_position_kite[1] == 0
     x, z, vx, vz = get_moving_pyramid(l0, start_position_kite[0], start_position_kite[2], dl0, v_rotation_center,
-                                       n_sections, elevation_rotation_axis)
-    r = np.zeros((n_sections, 3))
+                                       n_elements, elevation_rotation_axis)
+    r = np.zeros((n_elements, 3))
     r[:, 0] = x
     r[:, 2] = z
 
@@ -54,12 +54,12 @@ def run_helical_flight():
     # Run simulation
     u = np.zeros((n_intervals, 1))
 
-    dyn = derive_sim_input(n_sections, False, False, omega=omega, vwx=10)
+    dyn = derive_tether_model(n_elements, False, False, omega=omega, vwx=10)
     check_constraints(dyn, x0)
     run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u)
 
 
-def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, df=None):
+def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, flight_data=None):
     t = np.arange(0, n_intervals+1)*tf
 
     sim = dae_sim(tf, n_intervals, dyn)
@@ -67,25 +67,36 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, d
     sol_x = np.array(sol_x)
     sol_nu = np.array(sol_nu)
 
-    rx = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, :dyn['n_sections']*3:3]))
-    ry = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, 1:dyn['n_sections']*3:3]))
-    rz = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, 2:dyn['n_sections']*3:3]))
+    rx = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, :dyn['n_elements']*3:3]))
+    ry = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, 1:dyn['n_elements']*3:3]))
+    rz = np.hstack((np.zeros((n_intervals+1, 1)), sol_x[:, 2:dyn['n_elements']*3:3]))
 
-    tether_section_lengths = ((rx[:, 1:] - rx[:, :-1])**2 + (ry[:, 1:] - ry[:, :-1])**2 + (rz[:, 1:] - rz[:, :-1])**2)**.5
-    tether_force = sol_nu*tether_section_lengths[1:, :]
+    tether_element_lengths = ((rx[:, 1:] - rx[:, :-1])**2 + (ry[:, 1:] - ry[:, :-1])**2 + (rz[:, 1:] - rz[:, :-1])**2)**.5
+    tether_force = sol_nu*tether_element_lengths[1:, :]
 
-    plt.figure()
-    plt.plot(t[1:], tether_force[:, 0], label='sim')
-    plt.xlabel("Time [s]")
-    plt.ylabel("Tether force ground [N]")
-    if df is not None:
-        plt.plot(df.time, df.ground_tether_force, label='mea')
-        plt.legend()
-        plot_flight_sections(plt.gca(), df)
+    r_end = np.sum(sol_x[:, (dyn['n_free_pm']-1)*3:dyn['n_free_pm']*3]**2, axis=1)**.5
+
+    fig, ax = plt.subplots(3, 1, sharex=True)
+    ax[0].plot(t[1:], tether_force[:, 0]*1e-3, label='sim')
+    ax[0].set_ylabel("Tether force ground [kN]")
+    ax[0].set_ylim([0, 5.5])
+    ax[1].plot(t, sol_x[:, -2]-r_end, label='sim')
+    ax[1].set_ylabel("Difference tether length\nand radial position [m]")
+    ax[1].set_ylim([0, None])
+    ax[2].plot(t, sol_x[:, -1], label='sim')
+    ax[2].set_ylabel("Tether speed [m/s]")
+    ax[2].set_xlabel("Time [s]")
+    ax[2].set_ylim([0, None])
+    for a in ax: a.grid()
+    if flight_data is not None:
+        ax[0].plot(flight_data.time, flight_data.ground_tether_force * 1e-3, label='mea')
+        ax[2].plot(flight_data.time, flight_data.ground_tether_reelout_speed, label='mea')
+        ax[2].legend()
+        for a in ax: plot_flight_sections(a, flight_data)
 
     get_rotation_matrices = ca.Function('get_rotation_matrices', [dyn['x'], dyn['u']],
                                         [dyn['rotation_matrices']['tangential_plane'],
-                                         dyn['rotation_matrices']['end_section']])
+                                         dyn['rotation_matrices']['last_element']])
     ypr = np.empty((n_intervals, 3))
     rm_tau2e = np.empty((n_intervals, 3, 3))
     rm_t2e = np.empty((n_intervals, 3, 3))
@@ -99,6 +110,8 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, d
 
         ypr[i, :] = unravel_euler_angles(rm_tau2t, '321')
 
+    highlight_time_points = [97, 107, 205, 215]
+
     fig, ax_ypr = plt.subplots(3, 1, sharex=True)
     plt.suptitle("3-2-1 Euler angles between tangential\nand last tether element ref. frame")
     ax_ypr[0].plot(t[1:], ypr[:, 0]*180./np.pi, label='sim')
@@ -108,12 +121,16 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, d
     ax_ypr[2].plot(t[1:], ypr[:, 2]*180./np.pi, label='sim')
     ax_ypr[2].set_ylabel("Roll [deg]")
     ax_ypr[2].set_xlabel("Time [s]")
-    if df is not None:
-        ax_ypr[1].plot(df.time, df.pitch_tau*180./np.pi, label='mea')
-        ax_ypr[2].plot(df.time, df.roll_tau*180./np.pi, label='mea')
+    for i in highlight_time_points:
+        ax_ypr[1].plot(t[i], ypr[i+1, 1]*180./np.pi, 's')
+        ax_ypr[2].plot(t[i], ypr[i+1, 2]*180./np.pi, 's')
+
+    for a in ax_ypr: a.grid()
+    if flight_data is not None:
+        ax_ypr[1].plot(flight_data.time, flight_data.pitch_tau * 180. / np.pi, label='mea')
+        ax_ypr[2].plot(flight_data.time, flight_data.roll_tau * 180. / np.pi, label='mea')
         ax_ypr[2].legend()
-        for a in ax_ypr:
-            plot_flight_sections(a, df)
+        for a in ax_ypr: plot_flight_sections(a, flight_data)
 
     plt.figure(figsize=(8, 6))
     ax3d = plt.axes(projection='3d')
@@ -130,9 +147,11 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, d
             ax3d.set_zlim([0, 250])
 
             ax3d.plot3D(rx[i, :], ry[i, :], rz[i, :])
+            for r in zip(rx[:i:25, :], ry[:i:25, :], rz[:i:25, :]):
+                ax3d.plot3D(r[0], r[1], r[2], linewidth=.5, color='grey')
             # ax3d.plot3D([0, np.cos(elevation_rotation_axis)*150], [0, 0], [0, np.sin(elevation_rotation_axis)*150],
             #             '--', linewidth=.7, color='grey')  # Plot rotation axis
-            ax3d.plot3D(rx[:, -1], ry[:, -1], rz[:, -1], linewidth=.7, color='grey')  # Plot trajectory of end point
+            ax3d.plot3D(rx[:, -1], ry[:, -1], rz[:, -1], color='grey')  # Plot trajectory of end point
             ax3d.text(75, 40, 75, "{:.2f} s".format(ti))
 
             ax3d.set_xlabel("x [m]")
@@ -155,59 +174,34 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, d
 
             plt.pause(0.001)
     else:
-        ax3d.plot3D(rx[:, -1], ry[:, -1], rz[:, -1], linewidth=.7, color='grey')  # Plot trajectory of end point
+        # for r in zip(rx[::25, :], ry[::25, :], rz[::25, :]):
+        #     ax3d.plot3D(r[0], r[1], r[2], linewidth=.7, color='grey')
+        ax3d.plot3D(rx[:, -1], ry[:, -1], rz[:, -1])  # Plot trajectory of end point
+        for i in highlight_time_points:
+            ax3d.plot3D(rx[i, :], ry[i, :], rz[i, :])
 
-    fig, ax = plt.subplots(2, 1, sharey=True)
-    plt.suptitle("Start and final position")
-    ax[0].plot(rx[-1, :], rz[-1, :], 's-')
-    ax[0].plot(rx[0, :], rz[0, :], '--')
-    ax[0].set_xlim([0, 120])
-    ax[0].set_xlabel("x [m]")
-    ax[0].set_ylabel("z [m]")
-    ax[0].axis('equal')
+        ax3d.set_xlim([0, 250])
+        ax3d.set_ylim([-125, 125])
+        ax3d.set_zlim([0, 250])
 
-    ax[1].plot(ry[-1, :], rz[-1, :], 's-')
-    ax[1].plot(ry[0, :], rz[0, :], '--')
-    ax[1].set_xlabel("y [m]")
-    ax[1].set_ylabel("z [m]")
-    ax[1].axis('equal')
+        ax3d.set_xlabel("x [m]")
+        ax3d.set_ylabel("y [m]")
+        ax3d.set_zlabel("z [m]")
 
-
-def run_simulation_with_measured_acceleration():
-    df = read_and_transform_flight_data()
-    x_kite, a_kite = find_accelerations_for_trajectory(df)
-    r0, r1 = x_kite[0, :3], x_kite[1, :3]
-    tf = .1
-    n_intervals = a_kite.shape[0]
-
-    n_sections = 30
-    dyn = derive_sim_input(n_sections, False, False, vwx=9, impose_acceleration_directly=True)
-
-    # Get starting position
-    dl0 = 1.3
-    l0 = np.sum(r0**2)**.5+1
-
-    x0, y0, z0 = get_tilted_pyramid_3d(l0, *r0, n_sections)
-    r = np.empty((n_sections, 3))
-    r[:, 0] = x0
-    r[:, 1] = y0
-    r[:, 2] = z0
-
-    x1, y1, z1 = get_tilted_pyramid_3d(l0+dl0*tf, *r1, n_sections)
-    v = np.empty((n_sections, 3))
-    v[:, 0] = (x1-x0)/tf
-    v[:, 1] = (y1-y0)/tf
-    v[:, 2] = (z1-z0)/tf
-
-    x0 = np.vstack((r.reshape((-1, 1)), v.reshape((-1, 1)), [[l0], [dl0]]))
-    x0 = find_initial_velocities_satisfying_constraints(dyn, x0, x_kite[0, 3:])
-
-    check_constraints(dyn, x0)
-
-    u = np.zeros((n_intervals, 4))
-    u[:, 1:] = a_kite
-
-    run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, df=df)
+    # fig, ax = plt.subplots(2, 1, sharey=True)
+    # plt.suptitle("Start and final position")
+    # ax[0].plot(rx[-1, :], rz[-1, :], 's-')
+    # ax[0].plot(rx[0, :], rz[0, :], '--')
+    # ax[0].set_xlim([0, 120])
+    # ax[0].set_xlabel("x [m]")
+    # ax[0].set_ylabel("z [m]")
+    # ax[0].axis('equal')
+    #
+    # ax[1].plot(ry[-1, :], rz[-1, :], 's-')
+    # ax[1].plot(ry[0, :], rz[0, :], '--')
+    # ax[1].set_xlabel("y [m]")
+    # ax[1].set_ylabel("z [m]")
+    # ax[1].axis('equal')
 
 
 def setup_integrator_kinematic_model(tf):
@@ -225,7 +219,7 @@ def setup_integrator_kinematic_model(tf):
     return intg
 
 
-def find_accelerations_for_trajectory(df, verify=False):
+def find_accelerations_matching_kite_trajectory(df, verify=False):
     n_intervals = df.shape[0]-1
     tf = .1
 
@@ -278,6 +272,101 @@ def find_accelerations_for_trajectory(df, verify=False):
         ax3d.plot3D(df['rx'], df['ry'], df['rz'], '--')
 
     return states_sol, controls_sol
+
+
+def find_matching_tether_acceleration(df):
+    n_intervals = df.shape[0]-1
+    tf = .1
+
+    # ODE for kinematic model
+    dl = ca.SX.sym('dl')
+    ddl = ca.SX.sym('ddl')
+
+    # Create an integrator
+    dae = {'x': dl, 'ode': ddl, 'p': ddl}
+
+    intg = ca.integrator('intg', 'idas', dae, {'tf': tf})
+
+    opti = ca.casadi.Opti()
+
+    # Decision variables for states
+    states = opti.variable(n_intervals+1)
+    # Decision variables for control vector
+    controls = opti.variable(n_intervals)
+
+    # Gap-closing shooting constraints
+    for k in range(n_intervals):
+        res = intg(x0=states[k], p=controls[k])
+        opti.subject_to(states[k+1] == res["xf"])
+
+    # Initial guesses
+    opti.set_initial(states, df['ground_tether_reelout_speed'].values)
+    opti.set_initial(controls, np.diff(df['ground_tether_reelout_speed'].values)/.1)
+
+    opti.minimize(ca.sumsqr(states - df['ground_tether_reelout_speed'].values))
+
+    # solve optimization problem
+    opti.solver('ipopt')
+
+    sol = opti.solve()
+
+    return sol.value(controls)
+
+
+def run_simulation_with_measured_acceleration(realistic_tether_input=False):
+    # Get tether model.
+    n_tether_elements = 30
+    dyn = derive_tether_model(n_tether_elements, False, False, vwx=9, impose_acceleration_directly=True)
+
+    flight_data = read_and_transform_flight_data()  # Read flight data.
+    # for k in list(df): print(k)
+    tf = .1  # Time step of the simulation - fixed by flight data time resolution.
+    n_intervals = flight_data.shape[0] - 1  # Number of simulation steps - fixed by selected flight data interval.
+
+    # Control input for this simulation exists of tether acceleration and accelerations on last point mass.
+    if realistic_tether_input:  # Infer tether acceleration from measurements.
+        ddl = find_matching_tether_acceleration(flight_data)
+    else:  # Run simulation with constant tether acceleration and, in case the latter is set to zero, constant tether
+        # speed.
+        ddl = 0
+
+    # Infer kite acceleration from measurements.
+    x_kite, a_kite = find_accelerations_matching_kite_trajectory(flight_data)
+
+    # Set control input array for simulation.
+    u = np.zeros((n_intervals, 4))
+    u[:, 0] = ddl
+    u[:, 1:] = a_kite
+
+    # Get starting position of simulation
+    if realistic_tether_input:
+        dl0 = flight_data.loc[flight_data.index[0], 'ground_tether_reelout_speed']
+        delta_l0 = 2  # Initial difference between the radial position of the kite and tether length.
+    else:
+        dl0 = 1.24
+        delta_l0 = 2 #1.05  # Initial difference between the radial position of the kite and tether length.
+    r0, r1 = x_kite[0, :3], x_kite[1, :3]
+    l0 = np.sum(r0**2)**.5+delta_l0  # Lower to increase tether force, but setting too low results in the tether being
+    # shorter than the radial position of the kite and thus a crashing simulation.
+
+    x0, y0, z0 = get_tilted_pyramid_3d(l0, *r0, n_tether_elements)
+    r = np.empty((n_tether_elements, 3))
+    r[:, 0] = x0
+    r[:, 1] = y0
+    r[:, 2] = z0
+
+    x1, y1, z1 = get_tilted_pyramid_3d(l0+dl0*tf, *r1, n_tether_elements)
+    v = np.empty((n_tether_elements, 3))
+    v[:, 0] = (x1-x0)/tf
+    v[:, 1] = (y1-y0)/tf
+    v[:, 2] = (z1-z0)/tf
+
+    x0 = np.vstack((r.reshape((-1, 1)), v.reshape((-1, 1)), [[l0], [dl0]]))
+    x0 = find_initial_velocities_satisfying_constraints(dyn, x0, x_kite[0, 3:])
+    check_constraints(dyn, x0)
+
+    # Run simulation.
+    run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=False, flight_data=flight_data)
 
 
 if __name__ == "__main__":
