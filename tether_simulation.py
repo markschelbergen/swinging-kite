@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 from generate_initial_state import get_moving_pyramid, get_tilted_pyramid_3d, check_constraints, \
     find_initial_velocities_satisfying_constraints
-from tether_model_and_verification import derive_tether_model, dae_sim
+from tether_model_and_verification import derive_tether_model, derive_tether_model_kcu, dae_sim, l_bridle
 from utils import calc_cartesian_coords_enu, plot_vector, unravel_euler_angles, plot_flight_sections, \
     read_and_transform_flight_data
 
@@ -74,7 +74,8 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
     tether_element_lengths = ((rx[:, 1:] - rx[:, :-1])**2 + (ry[:, 1:] - ry[:, :-1])**2 + (rz[:, 1:] - rz[:, :-1])**2)**.5
     tether_force = sol_nu*tether_element_lengths[1:, :]
 
-    r_end = np.sum(sol_x[:, (dyn['n_free_pm']-1)*3:dyn['n_free_pm']*3]**2, axis=1)**.5
+    n_tether_elements = dyn.get('n_tether_elements', dyn['n_elements'])
+    r_end = np.sum(sol_x[:, (n_tether_elements-1)*3:n_tether_elements*3]**2, axis=1)**.5
 
     fig, ax = plt.subplots(3, 1, sharex=True)
     ax[0].plot(t[1:], tether_force[:, 0]*1e-3, label='sim')
@@ -110,7 +111,7 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
 
         ypr[i, :] = unravel_euler_angles(rm_tau2t, '321')
 
-    highlight_time_points = [97, 107, 205, 215]
+    highlight_time_points = [0, 97, 107, 205, 215]
 
     fig, ax_ypr = plt.subplots(3, 1, sharex=True)
     plt.suptitle("3-2-1 Euler angles between tangential\nand last tether element ref. frame")
@@ -219,7 +220,7 @@ def setup_integrator_kinematic_model(tf):
     return intg
 
 
-def find_accelerations_matching_kite_trajectory(df, verify=False):
+def find_acceleration_matching_kite_trajectory(df, verify=False):
     n_intervals = df.shape[0]-1
     tf = .1
 
@@ -315,8 +316,9 @@ def find_matching_tether_acceleration(df):
 
 def run_simulation_with_measured_acceleration(realistic_tether_input=False):
     # Get tether model.
+    separate_kcu_mass = True
     n_tether_elements = 30
-    dyn = derive_tether_model(n_tether_elements, False, False, vwx=9, impose_acceleration_directly=True)
+    dyn = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=9, impose_acceleration_directly=True)
 
     flight_data = read_and_transform_flight_data()  # Read flight data.
     # for k in list(df): print(k)
@@ -331,7 +333,7 @@ def run_simulation_with_measured_acceleration(realistic_tether_input=False):
         ddl = 0
 
     # Infer kite acceleration from measurements.
-    x_kite, a_kite = find_accelerations_matching_kite_trajectory(flight_data)
+    x_kite, a_kite = find_acceleration_matching_kite_trajectory(flight_data)
 
     # Set control input array for simulation.
     u = np.zeros((n_intervals, 4))
@@ -344,29 +346,39 @@ def run_simulation_with_measured_acceleration(realistic_tether_input=False):
         delta_l0 = 2  # Initial difference between the radial position of the kite and tether length.
     else:
         dl0 = 1.24
-        delta_l0 = 2 #1.05  # Initial difference between the radial position of the kite and tether length.
-    r0, r1 = x_kite[0, :3], x_kite[1, :3]
-    l0 = np.sum(r0**2)**.5+delta_l0  # Lower to increase tether force, but setting too low results in the tether being
+        delta_l0 = 1.2  #1.05  # Initial difference between the radial position of the kite and tether length.
+    p0, p1 = x_kite[0, :3], x_kite[1, :3]
+    r0 = np.sum(p0**2)**.5
+    l0 = r0+delta_l0  # Lower to increase tether force, but setting too low results in the tether being
     # shorter than the radial position of the kite and thus a crashing simulation.
+    if separate_kcu_mass:
+        l0 -= l_bridle
+        p0 = p0/np.linalg.norm(p0)*(r0-l_bridle)
+        r1 = np.sum(p1**2)**.5
+        p1 = p1/np.linalg.norm(p1)*(r1-l_bridle)
 
-    x0, y0, z0 = get_tilted_pyramid_3d(l0, *r0, n_tether_elements)
+    x0, y0, z0 = get_tilted_pyramid_3d(l0, *p0, n_tether_elements)
     r = np.empty((n_tether_elements, 3))
     r[:, 0] = x0
     r[:, 1] = y0
     r[:, 2] = z0
+    if separate_kcu_mass:
+        r = np.vstack((r, x_kite[:1, :3]))
 
-    x1, y1, z1 = get_tilted_pyramid_3d(l0+dl0*tf, *r1, n_tether_elements)
+    x1, y1, z1 = get_tilted_pyramid_3d(l0+dl0*tf, *p1, n_tether_elements)
     v = np.empty((n_tether_elements, 3))
     v[:, 0] = (x1-x0)/tf
     v[:, 1] = (y1-y0)/tf
     v[:, 2] = (z1-z0)/tf
+    if separate_kcu_mass:
+        v = np.vstack((v, x_kite[:1, 3:6]))
 
     x0 = np.vstack((r.reshape((-1, 1)), v.reshape((-1, 1)), [[l0], [dl0]]))
     x0 = find_initial_velocities_satisfying_constraints(dyn, x0, x_kite[0, 3:])
     check_constraints(dyn, x0)
 
     # Run simulation.
-    run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=False, flight_data=flight_data)
+    run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, flight_data=flight_data)
 
 
 if __name__ == "__main__":

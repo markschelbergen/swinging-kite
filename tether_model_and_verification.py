@@ -12,6 +12,10 @@ d_t = .01
 rho_t = 724.
 cd_t = 1.1
 
+m_kite = 11
+m_kcu = 9
+l_bridle = 11.5
+
 
 def get_catenary_sag(x, tether_force_center):
     a = tether_force_center/(g*rho_t*np.pi*d_t**2/4)
@@ -74,6 +78,8 @@ def derive_tether_model(n_elements, fix_end=False, explicit=True, include_drag=T
     tether_length_constraints = []
 
     for i in range(n_elements):
+        last_element = i == n_elements - 1
+
         if fix_end and i == n_free_point_masses:
             if isinstance(fix_end, list):
                 zi = fix_end[2]
@@ -85,19 +91,19 @@ def derive_tether_model(n_elements, fix_end=False, explicit=True, include_drag=T
             vi = v[i, :]
         vai = vi - vw.T
 
-        if i == n_elements - 1:
+        if last_element:
             point_mass = m_s/2 # + m_kite
         else:
             point_mass = m_s
 
         e_k = e_k + .5 * point_mass * ca.dot(vi, vi)
-        if not (i == n_elements - 1 and (omega is not None or impose_acceleration_directly)):
+        if not (last_element and (omega is not None or impose_acceleration_directly)):
             e_p = e_p + point_mass * zi * g
         else:
             print("Resultant force on last mass point is imposed, i.e. gravity and tether forces etc. on last mass "
                   "point are not included explicitly.")
 
-        if i == n_elements - 1:
+        if last_element:
             if omega is not None:
                 fi = ca.cross(omega, vi)*point_mass  # Centripetal force w/o tether drag and aerodynamic force of kite.
             elif impose_acceleration_directly:
@@ -106,14 +112,14 @@ def derive_tether_model(n_elements, fix_end=False, explicit=True, include_drag=T
                 fi = d_s[i, :]/2  # + fa_kite
         else:
             fi = (d_s[i, :] + d_s[i+1, :])/2
-        if not (fix_end and i == n_elements - 1):
+        if not (fix_end and last_element):
             f.append(fi)
 
         if i == 0:
             ri0 = ca.SX.zeros((1, 3))
         else:
             ri0 = r[i-1, :]
-        if fix_end and i == n_elements - 1:
+        if fix_end and last_element:
             if isinstance(fix_end, list):
                 rif = ca.hcat(fix_end)
             else:
@@ -124,7 +130,7 @@ def derive_tether_model(n_elements, fix_end=False, explicit=True, include_drag=T
         tether_lengths.append(dri)
         tether_length_constraints.append(.5 * (ca.dot(dri, dri) - l_s**2))
 
-        if i == n_elements - 1:
+        if last_element:
             ez_end_sec = dri/ca.norm_2(dri)
             ey_end_sec = ca.cross(ez_end_sec, vai)/ca.norm_2(ca.cross(ez_end_sec, vai))
             ex_end_sec = ca.cross(ey_end_sec, ez_end_sec)
@@ -180,6 +186,189 @@ def derive_tether_model(n_elements, fix_end=False, explicit=True, include_drag=T
             'dg': tether_speed_constraints,
             'n_free_pm': n_free_point_masses,
             'n_elements': n_elements,
+            'tether_lengths': tether_lengths,
+            'rotation_matrices': {
+                'tangential_plane': dcm_tau,
+                'last_element': dcm_end_sec,
+            }
+        }
+    return res
+
+
+def derive_tether_model_kcu(n_tether_elements, separate_kcu_mass=False, explicit=True, include_drag=True, vwx=0, impose_acceleration_directly=False):
+    # Removed the functionality to fix the end and imposing a rigid body rotation with omega.
+    vw = ca.vertcat(vwx, 0, 0)
+
+    # States
+    n_elements = n_tether_elements
+    if separate_kcu_mass:
+        n_elements += 1
+    n_free_point_masses = n_elements
+    r = ca.SX.sym('r', n_free_point_masses, 3)
+    v = ca.SX.sym('v', n_free_point_masses, 3)
+
+    l = ca.SX.sym('l')
+    dl = ca.SX.sym('dl')
+    x = ca.vertcat(ca.vec(r.T), ca.vec(v.T), l, dl)
+
+    # Controls
+    ddl = ca.SX.sym('ddl')
+    if impose_acceleration_directly:
+        a_end = ca.SX.sym('a_end', 3)
+        u = ca.vertcat(ddl, a_end)
+    else:
+        u = ddl
+
+    l_s = l / n_tether_elements
+    dl_s = dl / n_tether_elements
+    ddl_s = ddl / n_tether_elements
+
+    m_s = np.pi*d_t**2/4 * l_s * rho_t
+
+    if include_drag:
+        # Determine drag on each tether element
+        d_s = []
+        for i in range(n_tether_elements):
+            if i == 0:
+                v0 = ca.SX.zeros((1, 3))
+            else:
+                v0 = v[i-1, :]
+            vf = v[i, :]
+
+            va = (v0+vf)/2 - vw.T
+            d_s.append(-.5*rho*d_t*l_s*cd_t*ca.norm_2(va)*va)
+        d_s = ca.vcat(d_s)
+        if separate_kcu_mass:
+            # TODO: add bridle drag?
+            v_kcu = v[n_tether_elements-1, :]
+            va = v_kcu - vw.T
+            d_kcu = -.5*rho*1.6*1.*ca.norm_2(va)*va
+    else:
+        d_s = ca.SX.zeros(n_tether_elements, 3)
+
+    e_k = 0
+    e_p = 0
+    f = []  # Non-conservative forces
+    tether_lengths = []
+    tether_length_constraints = []
+
+    for i in range(n_elements):
+        last_element = i == n_elements - 1
+        kcu_element = separate_kcu_mass and i == n_elements - 2
+
+        zi = r[i, 2]
+        vi = v[i, :]
+        vai = vi - vw.T
+
+        if not separate_kcu_mass:
+            if last_element:
+                point_mass = m_s/2 + m_kite + m_kcu
+            else:
+                point_mass = m_s
+        else:
+            if last_element:
+                point_mass = m_kite
+            elif kcu_element:
+                point_mass = m_s/2 + m_kcu
+            else:
+                point_mass = m_s
+
+        e_k = e_k + .5 * point_mass * ca.dot(vi, vi)
+        if last_element and impose_acceleration_directly:
+            print("Resultant force on last mass point is imposed, i.e. gravity and tether forces etc. on last mass "
+                  "point are not included explicitly.")
+        else:
+            e_p = e_p + point_mass * zi * g
+
+        if last_element:
+            if impose_acceleration_directly:
+                fi = a_end.T*point_mass
+            elif not separate_kcu_mass:
+                fi = d_s[i, :]/2  # + fa_kite
+            else:
+                fi = 0  # fa_kite
+        elif kcu_element:
+            fi = d_s[i, :]/2 + d_kcu
+        else:
+            fi = (d_s[i, :] + d_s[i+1, :])/2
+        f.append(fi)
+
+        if i == 0:
+            ri0 = ca.SX.zeros((1, 3))
+        else:
+            ri0 = r[i-1, :]
+        rif = r[i, :]
+        dri = rif - ri0
+        tether_lengths.append(dri)
+
+        if last_element and separate_kcu_mass:
+            tether_length_constraints.append(.5 * (ca.dot(dri, dri) - l_bridle**2))
+        else:
+            tether_length_constraints.append(.5 * (ca.dot(dri, dri) - l_s**2))
+
+        if last_element:
+            ez_end_sec = dri/ca.norm_2(dri)
+            ey_end_sec = ca.cross(ez_end_sec, vai)/ca.norm_2(ca.cross(ez_end_sec, vai))
+            ex_end_sec = ca.cross(ey_end_sec, ez_end_sec)
+            dcm_end_sec = ca.horzcat(ex_end_sec.T, ey_end_sec.T, ez_end_sec.T)
+
+            ez_tau = rif/ca.norm_2(rif)
+            ey_tau = ca.cross(ez_tau, vai)/ca.norm_2(ca.cross(ez_tau, vai))
+            ex_tau = ca.cross(ey_tau, ez_tau)
+            dcm_tau = ca.horzcat(ex_tau.T, ey_tau.T, ez_tau.T)
+
+    f = ca.vcat(f)
+    tether_lengths = ca.vcat(tether_lengths)
+    tether_length_constraints = ca.vcat(tether_length_constraints)
+
+    r = ca.vec(r.T)
+    v = ca.vec(v.T)
+    f = ca.vec(f.T)
+
+    a00 = ca.jacobian(ca.jacobian(e_k, v), v)
+    a10 = ca.jacobian(tether_length_constraints, r)
+    a0 = ca.horzcat(a00, a10.T)
+    a1 = ca.horzcat(a10, ca.SX.zeros((n_elements, n_elements)))
+    a = ca.vertcat(a0, a1)
+    if impose_acceleration_directly:  # Set tether force on last point mass to zero
+        a[(n_elements - 1) * 3:n_elements * 3, -1] = 0
+
+    c0 = f - ca.jacobian(e_p, r).T
+    if separate_kcu_mass:
+        c1 = -ca.jacobian(a10@v, r)@v + ca.vertcat((dl_s**2 + l_s*ddl_s) * ca.SX.ones(n_tether_elements, 1), 0)
+    else:
+        c1 = -ca.jacobian(a10@v, r)@v + (dl_s**2 + l_s*ddl_s) * ca.SX.ones(n_tether_elements, 1)
+    c = ca.vertcat(c0, c1)
+
+    if separate_kcu_mass:
+        tether_speed_constraints = a10@v - ca.vertcat(l_s*dl_s * ca.SX.ones(n_tether_elements, 1), 0)
+    else:
+        tether_speed_constraints = a10@v - l_s*dl_s * ca.SX.ones(n_elements, 1)
+
+    if explicit:
+        b = ca.mtimes(ca.inv(a), c)
+        rhs = ca.vertcat(v, b[:3*n_free_point_masses], dl, ddl)
+        nu = b[3*n_free_point_masses:]
+        res = {
+            'x': x,
+            'u': u,
+            'rhs': rhs,
+            'nu': nu,
+            'b': b,
+            'n_elements': n_elements,
+        }
+    else:
+        res = {
+            'x': x,
+            'u': u,
+            'a': a,
+            'c': c,
+            'a10': a10,
+            'g': tether_length_constraints,
+            'dg': tether_speed_constraints,
+            'n_free_pm': n_free_point_masses,
+            'n_elements': n_elements,
+            'n_tether_elements': n_tether_elements,
             'tether_lengths': tether_lengths,
             'rotation_matrices': {
                 'tangential_plane': dcm_tau,
