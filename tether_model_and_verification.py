@@ -203,9 +203,8 @@ def derive_tether_model_kcu(n_tether_elements, separate_kcu_mass=False, explicit
     n_elements = n_tether_elements
     if separate_kcu_mass:
         n_elements += 1
-    n_free_point_masses = n_elements
-    r = ca.SX.sym('r', n_free_point_masses, 3)
-    v = ca.SX.sym('v', n_free_point_masses, 3)
+    r = ca.SX.sym('r', n_elements, 3)
+    v = ca.SX.sym('v', n_elements, 3)
 
     l = ca.SX.sym('l')
     dl = ca.SX.sym('dl')
@@ -217,7 +216,8 @@ def derive_tether_model_kcu(n_tether_elements, separate_kcu_mass=False, explicit
         a_end = ca.SX.sym('a_end', 3)
         u = ca.vertcat(ddl, a_end)
     else:
-        u = ddl
+        fa_kite = ca.SX.sym('fa_kite', 3)
+        u = ca.vertcat(ddl, fa_kite)
 
     l_s = l / n_tether_elements
     dl_s = dl / n_tether_elements
@@ -284,9 +284,9 @@ def derive_tether_model_kcu(n_tether_elements, separate_kcu_mass=False, explicit
             if impose_acceleration_directly:
                 fi = a_end.T*point_mass
             elif not separate_kcu_mass:
-                fi = d_s[i, :]/2  # + fa_kite
+                fi = d_s[i, :]/2 + fa_kite.T
             else:
-                fi = 0  # fa_kite
+                fi = fa_kite.T
         elif kcu_element:
             fi = d_s[i, :]/2 + d_kcu
         else:
@@ -347,8 +347,8 @@ def derive_tether_model_kcu(n_tether_elements, separate_kcu_mass=False, explicit
 
     if explicit:
         b = ca.mtimes(ca.inv(a), c)
-        rhs = ca.vertcat(v, b[:3*n_free_point_masses], dl, ddl)
-        nu = b[3*n_free_point_masses:]
+        rhs = ca.vertcat(v, b[:3*n_elements], dl, ddl)
+        nu = b[3*n_elements:]
         res = {
             'x': x,
             'u': u,
@@ -366,7 +366,7 @@ def derive_tether_model_kcu(n_tether_elements, separate_kcu_mass=False, explicit
             'a10': a10,
             'g': tether_length_constraints,
             'dg': tether_speed_constraints,
-            'n_free_pm': n_free_point_masses,
+            'n_free_pm': n_elements,
             'n_elements': n_elements,
             'n_tether_elements': n_tether_elements,
             'tether_lengths': tether_lengths,
