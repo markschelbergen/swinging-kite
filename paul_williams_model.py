@@ -1,7 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits import mplot3d
-from scipy.optimize import least_squares
 
 
 def plot_vector(p0, v, ax, scale_vector=1, color='g', label=None):
@@ -34,9 +31,15 @@ def shoot(x, n_tether_elements, r_kite, v_kite, tension_ground, vwx, ax_plot_for
     positions[1, 1] = np.sin(phi_n)*l_s
     positions[1, 2] = np.sin(beta_n)*np.cos(phi_n)*l_s
 
+    er = r_kite/np.linalg.norm(r_kite)
+    vr = np.dot(v_kite, er)*er  # Radial velocity of 'rigid body'
+
     for j in range(n_tether_elements):
-        vj = np.cross(om, positions[j+1, :])  # TODO: only angular rotation considered
-        aj = np.cross(om, vj)
+        vj = np.cross(om, positions[j+1, :]) #+ vr  # TODO: only angular rotation considered
+        if return_positions and j == n_tether_elements - 1:
+            print("Position last mass point:", positions[j+1, :])
+            print("Velocity last mass point:", vj)
+        aj = np.cross(om, np.cross(om, positions[j+1, :]))
         ej = (positions[j+1, :] - positions[j, :])/l_s  # Axial direction of tether element
 
         vaj = vj - np.array([vwx, 0, 0])  # Apparent wind velocity
@@ -65,16 +68,19 @@ def shoot(x, n_tether_elements, r_kite, v_kite, tension_ground, vwx, ax_plot_for
 
 
 if __name__ == "__main__":
-    args = (10, [200, 0, 100], [0, 20, 0], 1000, 9)
+    import matplotlib.pyplot as plt
+    from mpl_toolkits import mplot3d
+    from scipy.optimize import least_squares
+
+    args = (10, [200, 0, 100], [2, 20, 1], 1000, 9)
     opt_res = least_squares(shoot, (20*np.pi/180., -15*np.pi/180., 250), args=args, verbose=2)
-    print(opt_res.x)
+    print("Resulting tether length:", opt_res.x[2])
     p = shoot(opt_res.x, *args, return_positions=True)
-    print(p[-1, :])
 
     plt.figure(figsize=(8, 6))
     ax3d = plt.axes(projection='3d')
 
-    ax3d.plot(p[:, 0], p[:, 1], p[:, 2], 's')
+    ax3d.plot(p[:, 0], p[:, 1], p[:, 2], '-s')
     ax3d.set_xlabel("x [m]")
     ax3d.set_ylabel("y [m]")
     ax3d.set_zlabel("z [m]")

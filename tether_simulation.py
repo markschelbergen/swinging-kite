@@ -7,6 +7,8 @@ from generate_initial_state import get_moving_pyramid, get_tilted_pyramid_3d, ch
 from tether_model_and_verification import derive_tether_model, derive_tether_model_kcu, dae_sim, l_bridle
 from utils import calc_cartesian_coords_enu, plot_vector, unravel_euler_angles, plot_flight_sections, \
     read_and_transform_flight_data
+from paul_williams_model import shoot
+from scipy.optimize import least_squares
 
 
 def run_helical_flight():
@@ -316,16 +318,32 @@ def find_matching_tether_acceleration(df):
     return sol.value(controls)
 
 
-def run_simulation_with_measured_acceleration(realistic_tether_input=False):
+def run_simulation_with_measured_acceleration(realistic_tether_input=True):
+    vwx = 9
     # Get tether model.
     separate_kcu_mass = True
     n_tether_elements = 30
-    dyn = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=9, impose_acceleration_directly=True)
+    dyn = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=vwx, impose_acceleration_directly=True)
 
     flight_data = read_and_transform_flight_data()  # Read flight data.
     # for k in list(df): print(k)
     tf = .1  # Time step of the simulation - fixed by flight data time resolution.
     n_intervals = flight_data.shape[0] - 1  # Number of simulation steps - fixed by selected flight data interval.
+
+    # tether_lengths = []
+    # for idx, row in flight_data.iterrows():
+    #     args = (n_tether_elements, list(row[['rx', 'ry', 'rz']]), list(row[['vx', 'vy', 'vz']]), row['ground_tether_force'], 9)
+    #     opt_res = least_squares(shoot, list(row[['kite_elevation', 'kite_azimuth', 'radius']]), args=args, verbose=0)
+    #     if not opt_res.success:
+    #         print("Optimization failed!")
+    #     # p = shoot(opt_res.x, *args, return_positions=True)
+    #     tether_lengths.append(opt_res.x[2])
+    # flight_data['calculated_tether_length'] = tether_lengths
+    #
+    # plt.plot(flight_data.time, flight_data.calculated_tether_length-flight_data.radius, label='dl')
+    # # Difference as low as 0.009 m up to 0.31 m
+    # plt.legend()
+    # plt.show()
 
     # Control input for this simulation exists of tether acceleration and accelerations on last point mass.
     if realistic_tether_input:  # Infer tether acceleration from measurements.
@@ -345,7 +363,7 @@ def run_simulation_with_measured_acceleration(realistic_tether_input=False):
     # Get starting position of simulation
     if realistic_tether_input:
         dl0 = flight_data.loc[flight_data.index[0], 'ground_tether_reelout_speed']
-        delta_l0 = 2  # Initial difference between the radial position of the kite and tether length.
+        delta_l0 = 1.75  # Initial difference between the radial position of the kite and tether length.
     else:
         dl0 = 1.24
         delta_l0 = 1.2  #1.05  # Initial difference between the radial position of the kite and tether length.
@@ -380,11 +398,11 @@ def run_simulation_with_measured_acceleration(realistic_tether_input=False):
     check_constraints(dyn, x0)
 
     # Run simulation.
-    sol_x, sol_nu = run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, flight_data=flight_data)
+    sol_x, sol_nu = run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=False, flight_data=flight_data)
 
-    # dyn_explicit = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, True, vwx=9, impose_acceleration_directly=True)
+    # dyn_explicit = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, True, vwx=vwx, impose_acceleration_directly=True)
     # fun_b = ca.Function('f_b', [dyn_explicit['x'], dyn_explicit['u']], [dyn_explicit['b']])
-    # dyn_f = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=9, impose_acceleration_directly=False)
+    # dyn_f = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=vwx, impose_acceleration_directly=False)
     # fun_mat = ca.Function('f_mat', [dyn_f['x'], dyn_f['u']], [dyn_f['a'], dyn_f['c']])
     #
     # aero_forces = []

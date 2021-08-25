@@ -148,7 +148,7 @@ def read_and_transform_flight_data():
     file_name = '{:d}{:02d}{:02d}_{:04d}.csv'.format(yr, m, d, i_cycle)
 
     df = pd.read_csv(file_name)
-    # print(list(df))
+    print(list(df))
     df = df[255:625]
     df['time'] = df['time'] - df['time'].iloc[0]
     df = df.interpolate()
@@ -173,4 +173,7 @@ def read_and_transform_flight_data():
                                                            upwind_direction), axis=1)
     df[['ax', 'ay']] = df.apply(tranform_to_wind_rf, args=(['ax', 'ay'], ['ax', 'ay'],
                                                            upwind_direction), axis=1)
+
+    df['radius'] = np.sum(df[['rx', 'ry', 'rz']].values**2, axis=1)**.5
+
     return df
