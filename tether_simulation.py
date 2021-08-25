@@ -380,29 +380,29 @@ def run_simulation_with_measured_acceleration(realistic_tether_input=False):
     check_constraints(dyn, x0)
 
     # Run simulation.
-    sol_x, sol_nu = run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=False, flight_data=flight_data)
+    sol_x, sol_nu = run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, flight_data=flight_data)
 
-    dyn_explicit = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, True, vwx=9, impose_acceleration_directly=True)
-    fun_b = ca.Function('f_b', [dyn_explicit['x'], dyn_explicit['u']], [dyn_explicit['b']])
-    dyn_f = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=9, impose_acceleration_directly=False)
-    fun_mat = ca.Function('f_mat', [dyn_f['x'], dyn_f['u']], [dyn_f['a'], dyn_f['c']])
-
-    aero_forces = []
-    for x, ui, nu in zip(sol_x[1:, :], u, sol_nu):
-        b = fun_b(x, ui)
-        ddx = b[:dyn_explicit['n_elements']*3]
-
-        a, c = fun_mat(x, [ui[0], 0, 0, 0])
-        eps = np.array(a@b - c)  # print(np.sum(np.abs(eps) > 1e-9)) -
-        f_aero = eps[(dyn_f['n_elements']-1)*3:dyn_f['n_elements']*3]
-        aero_forces.append(np.linalg.norm(f_aero))
-
-        # a, c = fun_mat(x, [ui[0], *f_aero])
-        # eps = np.array(a@b - c)
-        # print(np.sum(np.abs(eps) > 1e-9))
-
-    plt.figure()
-    plt.plot(aero_forces)
+    # dyn_explicit = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, True, vwx=9, impose_acceleration_directly=True)
+    # fun_b = ca.Function('f_b', [dyn_explicit['x'], dyn_explicit['u']], [dyn_explicit['b']])
+    # dyn_f = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=9, impose_acceleration_directly=False)
+    # fun_mat = ca.Function('f_mat', [dyn_f['x'], dyn_f['u']], [dyn_f['a'], dyn_f['c']])
+    #
+    # aero_forces = []
+    # for x, ui, nu in zip(sol_x[1:, :], u, sol_nu):
+    #     b = fun_b(x, ui)
+    #     ddx = b[:dyn_explicit['n_elements']*3]
+    #
+    #     a, c = fun_mat(x, [ui[0], 0, 0, 0])
+    #     eps = np.array(a@b - c)  # print(np.sum(np.abs(eps) > 1e-9)) -
+    #     f_aero = eps[(dyn_f['n_elements']-1)*3:dyn_f['n_elements']*3]
+    #     aero_forces.append(np.linalg.norm(f_aero))
+    #
+    #     # a, c = fun_mat(x, [ui[0], *f_aero])
+    #     # eps = np.array(a@b - c)
+    #     # print(np.sum(np.abs(eps) > 1e-9))
+    #
+    # plt.figure()
+    # plt.plot(aero_forces)
 
 if __name__ == "__main__":
     # run_helical_flight()
