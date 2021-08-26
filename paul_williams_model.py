@@ -67,7 +67,7 @@ def shoot(x, n_tether_elements, r_kite, v_kite, tension_ground, vwx, ax_plot_for
         return positions[-1, :] - r_kite
 
 
-if __name__ == "__main__":
+def find_tether_length():
     import matplotlib.pyplot as plt
     from mpl_toolkits import mplot3d
     from scipy.optimize import least_squares
@@ -90,3 +90,30 @@ if __name__ == "__main__":
     ax3d.set_zlim([0, 250])
 
     plt.show()
+
+
+def find_tether_lengths_flight_data():
+    import matplotlib.pyplot as plt
+    from scipy.optimize import least_squares
+    from utils import read_and_transform_flight_data
+    # Difference as low as 0.009 m up to 0.31 m
+    vwx = 9
+    n_tether_elements = 30
+    flight_data = read_and_transform_flight_data()  # Read flight data.
+
+    tether_lengths = []
+    for idx, row in flight_data.iterrows():
+        args = (n_tether_elements, list(row[['rx', 'ry', 'rz']]), list(row[['vx', 'vy', 'vz']]), row['ground_tether_force'], vwx)
+        opt_res = least_squares(shoot, list(row[['kite_elevation', 'kite_azimuth', 'radius']]), args=args, verbose=0)
+        if not opt_res.success:
+            print("Optimization failed!")
+        tether_lengths.append(opt_res.x[2])
+    flight_data['calculated_tether_length'] = tether_lengths
+
+    plt.plot(flight_data.time, flight_data.calculated_tether_length-flight_data.radius, label='delta l')
+    plt.legend()
+    plt.show()
+
+
+if __name__ == "__main__":
+    find_tether_lengths_flight_data()

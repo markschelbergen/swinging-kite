@@ -330,21 +330,6 @@ def run_simulation_with_measured_acceleration(realistic_tether_input=True):
     tf = .1  # Time step of the simulation - fixed by flight data time resolution.
     n_intervals = flight_data.shape[0] - 1  # Number of simulation steps - fixed by selected flight data interval.
 
-    # tether_lengths = []
-    # for idx, row in flight_data.iterrows():
-    #     args = (n_tether_elements, list(row[['rx', 'ry', 'rz']]), list(row[['vx', 'vy', 'vz']]), row['ground_tether_force'], 9)
-    #     opt_res = least_squares(shoot, list(row[['kite_elevation', 'kite_azimuth', 'radius']]), args=args, verbose=0)
-    #     if not opt_res.success:
-    #         print("Optimization failed!")
-    #     # p = shoot(opt_res.x, *args, return_positions=True)
-    #     tether_lengths.append(opt_res.x[2])
-    # flight_data['calculated_tether_length'] = tether_lengths
-    #
-    # plt.plot(flight_data.time, flight_data.calculated_tether_length-flight_data.radius, label='dl')
-    # # Difference as low as 0.009 m up to 0.31 m
-    # plt.legend()
-    # plt.show()
-
     # Control input for this simulation exists of tether acceleration and accelerations on last point mass.
     if realistic_tether_input:  # Infer tether acceleration from measurements.
         ddl = find_matching_tether_acceleration(flight_data)
