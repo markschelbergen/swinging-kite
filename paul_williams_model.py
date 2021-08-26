@@ -13,18 +13,21 @@ g = 9.81
 d_t = .01
 rho_t = 724.
 cd_t = 1.1
+# tether_modulus = 614600/(np.pi*.002**2)  # From Uwe's thesis
+# tether_stiffness = tether_modulus*np.pi*(d_t/2)**2
+tether_stiffness = 490000
 
 m_kite = 11
 m_kcu = 9
 l_bridle = 11.5
 
 
-def shoot(x, n_tether_elements, r_kite, v_kite, tension_ground, vwx, separate_kcu_mass=False, ax_plot_forces=False, return_positions=False):
+def shoot(x, n_tether_elements, r_kite, v_kite, tension_ground, vwx, separate_kcu_mass=False, elastic_elements=True, ax_plot_forces=False, return_positions=False):
     # Currently neglecting radial velocity of kite.
     beta_n, phi_n, tether_length = x
     om = np.cross(r_kite, v_kite)/np.linalg.norm(r_kite)**2
-    l_s = tether_length/n_tether_elements
-    m_s = np.pi*d_t**2/4 * l_s * rho_t
+    l_unstrained = tether_length/n_tether_elements
+    m_s = np.pi*d_t**2/4 * l_unstrained * rho_t
 
     n_elements = n_tether_elements
     if separate_kcu_mass:
@@ -36,6 +39,10 @@ def shoot(x, n_tether_elements, r_kite, v_kite, tension_ground, vwx, separate_kc
     tensions[0, 2] = np.sin(beta_n)*np.cos(phi_n)*tension_ground
 
     positions = np.zeros((n_elements+1, 3))
+    if elastic_elements:
+        l_s = (tension_ground/tether_stiffness+1)*l_unstrained
+    else:
+        l_s = l_unstrained
     positions[1, 0] = np.cos(beta_n)*np.cos(phi_n)*l_s
     positions[1, 1] = np.sin(phi_n)*l_s
     positions[1, 2] = np.sin(beta_n)*np.cos(phi_n)*l_s
@@ -43,13 +50,15 @@ def shoot(x, n_tether_elements, r_kite, v_kite, tension_ground, vwx, separate_kc
     er = r_kite/np.linalg.norm(r_kite)
     vr = np.dot(v_kite, er)*er  # Radial velocity of 'rigid body'
 
+    stretched_tether_length = l_s  # Stretched
     for j in range(n_elements):
         last_element = j == n_elements - 1
         kcu_element = separate_kcu_mass and j == n_elements - 2
 
         vj = np.cross(om, positions[j+1, :]) #+ vr  # TODO: only angular rotation considered
         aj = np.cross(om, np.cross(om, positions[j+1, :]))
-        ej = (positions[j+1, :] - positions[j, :])/l_s  # Axial direction of tether element
+        delta_p = positions[j+1, :] - positions[j, :]
+        ej = delta_p/np.linalg.norm(delta_p)  # Axial direction of tether element
 
         vaj = vj - np.array([vwx, 0, 0])  # Apparent wind velocity
         vajp = np.dot(vaj, ej)*ej  # Parallel to tether element
@@ -58,7 +67,7 @@ def shoot(x, n_tether_elements, r_kite, v_kite, tension_ground, vwx, separate_kc
         if separate_kcu_mass and last_element:
             dj = 0  # TODO: add bridle drag
         else:
-            dj = -.5*rho*l_s*d_t*cd_t*np.linalg.norm(vajn)*vajn
+            dj = -.5*rho*l_unstrained*d_t*cd_t*np.linalg.norm(vajn)*vajn
 
         if not separate_kcu_mass:
             if last_element:
@@ -91,6 +100,11 @@ def shoot(x, n_tether_elements, r_kite, v_kite, tension_ground, vwx, separate_kc
         if kcu_element:
             positions[j+2, :] = positions[j+1, :] + tensions[j+1, :]/np.linalg.norm(tensions[j+1, :]) * l_bridle
         elif not last_element:
+            if elastic_elements:
+                l_s = (np.linalg.norm(tensions[j+1, :])/tether_stiffness+1)*l_unstrained
+            else:
+                l_s = l_unstrained
+            stretched_tether_length += l_s
             positions[j+2, :] = positions[j+1, :] + tensions[j+1, :]/np.linalg.norm(tensions[j+1, :]) * l_s
 
     if return_positions:
@@ -116,7 +130,7 @@ def shoot(x, n_tether_elements, r_kite, v_kite, tension_ground, vwx, separate_kc
         ex_tau = np.cross(ey_tau, ez_tau)
         dcm_tau = np.vstack(([ex_tau], [ey_tau], [ez_tau])).T
 
-        return positions, dcm_last_elem, dcm_2nd_last_elem, dcm_f_aero, dcm_tau
+        return positions, stretched_tether_length, dcm_last_elem, dcm_2nd_last_elem, dcm_f_aero, dcm_tau
     else:
         return positions[-1, :] - r_kite
 
@@ -146,7 +160,7 @@ def find_tether_length():
     plt.show()
 
 
-def find_tether_lengths_flight_data(generate_sim_input=False, separate_kcu_mass=True):
+def find_tether_lengths_flight_data(generate_sim_input=False, separate_kcu_mass=True, elastic_elements=True):
     import matplotlib.pyplot as plt
     from mpl_toolkits import mplot3d
     from scipy.optimize import least_squares
@@ -169,19 +183,22 @@ def find_tether_lengths_flight_data(generate_sim_input=False, separate_kcu_mass=
     ax3d.set_zlim([0, 250])
 
     tether_lengths = []
+    strained_tether_lengths = []
     ypr_tether_end = np.empty((flight_data.shape[0], 3))
     ypr_tether_second_last = np.empty((flight_data.shape[0], 3))
     ypr_aero_force = np.empty((flight_data.shape[0], 3))
     for i, (idx, row) in enumerate(flight_data.iterrows()):
         args = (n_tether_elements, list(row[['rx', 'ry', 'rz']]), list(row[['vx', 'vy', 'vz']]),
-                row['ground_tether_force'], vwx, separate_kcu_mass)
+                row['ground_tether_force'], vwx, separate_kcu_mass, elastic_elements)
         opt_res = least_squares(shoot, list(row[['kite_elevation', 'kite_azimuth', 'radius']]), args=args, verbose=0)
         if not opt_res.success:
             print("Optimization failed!")
         tether_lengths.append(opt_res.x[2])
+        p, l_strained, rm_t2e_i, rm_tsl2e_i, rm_fa2e_i, rm_tau2e_i = shoot(opt_res.x, *args, return_positions=True)
+        strained_tether_lengths.append(l_strained)
         if separate_kcu_mass:
             tether_lengths[-1] = tether_lengths[-1] + l_bridle
-        p, rm_t2e_i, rm_tsl2e_i, rm_fa2e_i, rm_tau2e_i = shoot(opt_res.x, *args, return_positions=True)
+            strained_tether_lengths[-1] = strained_tether_lengths[-1] + l_bridle
 
         rm_tau2t = rm_t2e_i.T.dot(rm_tau2e_i)
         ypr_tether_end[i, :] = unravel_euler_angles(rm_tau2t, '321')
@@ -194,8 +211,6 @@ def find_tether_lengths_flight_data(generate_sim_input=False, separate_kcu_mass=
 
         if i % 25 == 0:
             ax3d.plot3D(p[:, 0], p[:, 1], p[:, 2], linewidth=.5, color='grey')
-
-    flight_data['calculated_tether_length'] = tether_lengths
 
     fig, ax_ypr = plt.subplots(3, 1, sharex=True)
     plt.suptitle("3-2-1 Euler angles between tangential\nand last tether element ref. frame")
@@ -224,20 +239,24 @@ def find_tether_lengths_flight_data(generate_sim_input=False, separate_kcu_mass=
     ax_ypr[1].set_ylim([0, None])
     for a in ax_ypr: plot_flight_sections(a, flight_data)
 
-    opt_states, opt_controls = match_measured_tether_speed(tether_lengths, flight_data.radius)
-
     fig, ax = plt.subplots(4, 1, sharex=True)
-    ax[0].plot(flight_data.time, flight_data.calculated_tether_length-flight_data.radius)
-    ax[0].plot(flight_data.time, opt_states[:, 0]-flight_data.radius, '--')
-    ax[1].plot(flight_data.time, tether_lengths)
-    ax[1].plot(flight_data.time, opt_states[:, 0], '--')
+    ax[0].plot(flight_data.time, np.array(strained_tether_lengths)-flight_data.radius)
+    # ax[0].plot(flight_data.time, np.array(tether_lengths)-flight_data.radius, ':')
+    ax[1].plot(flight_data.time, strained_tether_lengths)
+    ax[1].plot(flight_data.time, tether_lengths, ':')
+    ax[1].plot(flight_data.time, flight_data.radius, '-.')
     ax[2].plot(flight_data.time[:-1], np.diff(tether_lengths)/.1)
-    ax[2].plot(flight_data.time, opt_states[:, 1], '--')
-    ax[3].plot(flight_data.time[:-1], opt_controls)
 
-    if generate_sim_input:
-        opt_controls = np.hstack((opt_controls, [np.nan])).reshape((-1, 1))
-        np.save('tether_states.npy', np.hstack((opt_states, opt_controls)))
+    if not elastic_elements:
+        opt_states, opt_controls = match_measured_tether_speed(tether_lengths, flight_data.radius)
+        ax[0].plot(flight_data.time, opt_states[:, 0]-flight_data.radius, '--')
+        ax[1].plot(flight_data.time, opt_states[:, 0], '--')
+        ax[2].plot(flight_data.time, opt_states[:, 1], '--')
+        ax[3].plot(flight_data.time[:-1], opt_controls)
+
+        if generate_sim_input:
+            opt_controls = np.hstack((opt_controls, [np.nan])).reshape((-1, 1))
+            np.save('tether_states.npy', np.hstack((opt_states, opt_controls)))
 
     plt.show()
 
