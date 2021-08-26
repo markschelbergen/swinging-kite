@@ -131,10 +131,10 @@ def derive_tether_model(n_elements, fix_end=False, explicit=True, include_drag=T
         tether_length_constraints.append(.5 * (ca.dot(dri, dri) - l_s**2))
 
         if last_element:
-            ez_end_sec = dri/ca.norm_2(dri)
-            ey_end_sec = ca.cross(ez_end_sec, vai)/ca.norm_2(ca.cross(ez_end_sec, vai))
-            ex_end_sec = ca.cross(ey_end_sec, ez_end_sec)
-            dcm_end_sec = ca.horzcat(ex_end_sec.T, ey_end_sec.T, ez_end_sec.T)
+            ez_last_elem = dri/ca.norm_2(dri)
+            ey_last_elem = ca.cross(ez_last_elem, vai)/ca.norm_2(ca.cross(ez_last_elem, vai))
+            ex_last_elem = ca.cross(ey_last_elem, ez_last_elem)
+            dcm_last_elem = ca.horzcat(ex_last_elem.T, ey_last_elem.T, ez_last_elem.T)
 
             ez_tau = rif/ca.norm_2(rif)
             ey_tau = ca.cross(ez_tau, vai)/ca.norm_2(ca.cross(ez_tau, vai))
@@ -189,7 +189,7 @@ def derive_tether_model(n_elements, fix_end=False, explicit=True, include_drag=T
             'tether_lengths': tether_lengths,
             'rotation_matrices': {
                 'tangential_plane': dcm_tau,
-                'last_element': dcm_end_sec,
+                'last_element': dcm_last_elem,
             }
         }
     return res
@@ -307,10 +307,10 @@ def derive_tether_model_kcu(n_tether_elements, separate_kcu_mass=False, explicit
             tether_length_constraints.append(.5 * (ca.dot(dri, dri) - l_s**2))
 
         if last_element:
-            ez_end_sec = dri/ca.norm_2(dri)
-            ey_end_sec = ca.cross(ez_end_sec, vai)/ca.norm_2(ca.cross(ez_end_sec, vai))
-            ex_end_sec = ca.cross(ey_end_sec, ez_end_sec)
-            dcm_end_sec = ca.horzcat(ex_end_sec.T, ey_end_sec.T, ez_end_sec.T)
+            ez_last_elem = dri/ca.norm_2(dri)
+            ey_last_elem = ca.cross(ez_last_elem, vai)/ca.norm_2(ca.cross(ez_last_elem, vai))
+            ex_last_elem = ca.cross(ey_last_elem, ez_last_elem)
+            dcm_last_elem = ca.horzcat(ex_last_elem.T, ey_last_elem.T, ez_last_elem.T)
 
             ez_tau = rif/ca.norm_2(rif)
             ey_tau = ca.cross(ez_tau, vai)/ca.norm_2(ca.cross(ez_tau, vai))
@@ -372,7 +372,7 @@ def derive_tether_model_kcu(n_tether_elements, separate_kcu_mass=False, explicit
             'tether_lengths': tether_lengths,
             'rotation_matrices': {
                 'tangential_plane': dcm_tau,
-                'last_element': dcm_end_sec,
+                'last_element': dcm_last_elem,
             }
         }
     return res

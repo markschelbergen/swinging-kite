@@ -279,7 +279,7 @@ def find_acceleration_matching_kite_trajectory(df, verify=False):
     return states_sol, controls_sol
 
 
-def find_matching_tether_acceleration(df):
+def match_measured_tether_speed(df):
     n_intervals = df.shape[0]-1
     tf = .1
 
@@ -332,13 +332,16 @@ def run_simulation_with_measured_acceleration(realistic_tether_input=True):
 
     # Control input for this simulation exists of tether acceleration and accelerations on last point mass.
     if realistic_tether_input:  # Infer tether acceleration from measurements.
-        ddl = find_matching_tether_acceleration(flight_data)
+        # ddl = match_measured_tether_speed(flight_data)
+        ddl = np.load('tether_states.npy')[:-1, 2]
     else:  # Run simulation with constant tether acceleration and, in case the latter is set to zero, constant tether
         # speed.
         ddl = 0
 
     # Infer kite acceleration from measurements.
-    x_kite, a_kite = find_acceleration_matching_kite_trajectory(flight_data)
+    # x_kite, a_kite = find_acceleration_matching_kite_trajectory(flight_data)
+    # np.save('kite_states.npy', np.hstack((x_kite, np.vstack((a_kite, [[np.nan]*3])))))
+    x_kite, a_kite = np.load('kite_states.npy')[:, :6], np.load('kite_states.npy')[:-1, 6:]
 
     # Set control input array for simulation.
     u = np.zeros((n_intervals, 4))
@@ -346,16 +349,19 @@ def run_simulation_with_measured_acceleration(realistic_tether_input=True):
     u[:, 1:] = a_kite
 
     # Get starting position of simulation
+    p0, p1 = x_kite[0, :3], x_kite[1, :3]
+    r0 = np.sum(p0**2)**.5
     if realistic_tether_input:
-        dl0 = flight_data.loc[flight_data.index[0], 'ground_tether_reelout_speed']
-        delta_l0 = 1.75  # Initial difference between the radial position of the kite and tether length.
+        # dl0 = flight_data.loc[flight_data.index[0], 'ground_tether_reelout_speed']
+        # delta_l0 = 1.75  # Initial difference between the radial position of the kite and tether length.
+        dl0 = np.load('tether_states.npy')[0, 1]
+        l0 = np.load('tether_states.npy')[0, 0]
     else:
         dl0 = 1.24
         delta_l0 = 1.2  #1.05  # Initial difference between the radial position of the kite and tether length.
-    p0, p1 = x_kite[0, :3], x_kite[1, :3]
-    r0 = np.sum(p0**2)**.5
-    l0 = r0+delta_l0  # Lower to increase tether force, but setting too low results in the tether being
-    # shorter than the radial position of the kite and thus a crashing simulation.
+        l0 = r0+delta_l0  # Lower to increase tether force, but setting too low results in the tether being
+        # shorter than the radial position of the kite and thus a crashing simulation.
+
     if separate_kcu_mass:
         l0 -= l_bridle
         p0 = p0/np.linalg.norm(p0)*(r0-l_bridle)
@@ -383,7 +389,7 @@ def run_simulation_with_measured_acceleration(realistic_tether_input=True):
     check_constraints(dyn, x0)
 
     # Run simulation.
-    sol_x, sol_nu = run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=False, flight_data=flight_data)
+    sol_x, sol_nu = run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, flight_data=flight_data)
 
     # dyn_explicit = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, True, vwx=vwx, impose_acceleration_directly=True)
     # fun_b = ca.Function('f_b', [dyn_explicit['x'], dyn_explicit['u']], [dyn_explicit['b']])
