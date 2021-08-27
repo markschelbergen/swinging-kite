@@ -13,7 +13,7 @@ rho_t = 724.
 cd_t = 1.1
 
 m_kite = 11
-m_kcu = 9
+m_kcu = 16
 l_bridle = 11.5
 
 
