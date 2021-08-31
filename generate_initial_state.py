@@ -112,12 +112,12 @@ def find_initial_velocities_satisfying_constraints(dyn, x0, v_end, plot=False):
     dl = x0[2*n_point_masses*3+1]
 
     opti = ca.casadi.Opti()
-    r = opti.variable(n_pm_opt*3)
-    opti.set_initial(r, r_guess)
+    # r = opti.variable(n_pm_opt*3)
+    # opti.set_initial(r, r_guess)
     v = opti.variable(n_pm_opt*3)
     opti.set_initial(v, v_guess)
 
-    x = ca.vertcat(r, r_end, v, v_end, l, dl)
+    x = ca.vertcat(r_guess, r_end, v, v_end, l, dl)
     g, dg = ca.Function('f', [dyn['x']], [dyn['g'], dyn['dg']])(x)
     opti.minimize(ca.sumsqr(g)+ca.sumsqr(dg))
 

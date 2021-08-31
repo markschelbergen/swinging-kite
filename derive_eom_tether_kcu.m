@@ -2,7 +2,7 @@
 clc;
 clear all;
 
-n_tether_elements = 1;
+n_tether_elements = 2;
 n_point_masses = n_tether_elements+1;
 
 vwx = sym('vwx');

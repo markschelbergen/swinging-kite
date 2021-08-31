@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 from generate_initial_state import get_moving_pyramid, get_tilted_pyramid_3d, check_constraints, \
     find_initial_velocities_satisfying_constraints
-from tether_model_and_verification import derive_tether_model, derive_tether_model_kcu, dae_sim, l_bridle
+from tether_model_and_verification import derive_tether_model, derive_tether_model_kcu, derive_tether_model_kcu_williams, dae_sim
 from utils import calc_cartesian_coords_enu, plot_vector, unravel_euler_angles, plot_flight_sections, \
     read_and_transform_flight_data
 from paul_williams_model import shoot
@@ -362,56 +362,47 @@ def run_simulation_with_measured_acceleration(realistic_tether_input=True):
         l0 = r0+delta_l0  # Lower to increase tether force, but setting too low results in the tether being
         # shorter than the radial position of the kite and thus a crashing simulation.
 
-    if separate_kcu_mass:
-        l0 -= l_bridle
-        p0 = p0/np.linalg.norm(p0)*(r0-l_bridle)
-        r1 = np.sum(p1**2)**.5
-        p1 = p1/np.linalg.norm(p1)*(r1-l_bridle)
-
-    x0, y0, z0 = get_tilted_pyramid_3d(l0, *p0, n_tether_elements)
-    r = np.empty((n_tether_elements, 3))
-    r[:, 0] = x0
-    r[:, 1] = y0
-    r[:, 2] = z0
-    if separate_kcu_mass:
-        r = np.vstack((r, x_kite[:1, :3]))
-
-    x1, y1, z1 = get_tilted_pyramid_3d(l0+dl0*tf, *p1, n_tether_elements)
-    v = np.empty((n_tether_elements, 3))
-    v[:, 0] = (x1-x0)/tf
-    v[:, 1] = (y1-y0)/tf
-    v[:, 2] = (z1-z0)/tf
-    if separate_kcu_mass:
-        v = np.vstack((v, x_kite[:1, 3:6]))
+    positions = []
+    for i in range(2):
+        row = flight_data.iloc[i]
+        args = (l0, n_tether_elements, x_kite[i, :3], x_kite[i, 3:6],
+                a_kite[i, :], vwx, separate_kcu_mass, False)
+        opt_res = least_squares(shoot, list(row[['kite_elevation', 'kite_azimuth', 'radius']]), args=args,
+                                kwargs={'find_force': True}, verbose=0)
+        positions.append(shoot(opt_res.x, *args, return_values=True, find_force=True)[0][1:, :])
+    r = positions[0]
+    v = (positions[1]-positions[0])/tf
 
     x0 = np.vstack((r.reshape((-1, 1)), v.reshape((-1, 1)), [[l0], [dl0]]))
     x0 = find_initial_velocities_satisfying_constraints(dyn, x0, x_kite[0, 3:])
     check_constraints(dyn, x0)
 
     # Run simulation.
-    sol_x, sol_nu = run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, flight_data=flight_data)
+    sol_x, sol_nu = run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=False, flight_data=flight_data)
 
-    # dyn_explicit = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, True, vwx=vwx, impose_acceleration_directly=True)
-    # fun_b = ca.Function('f_b', [dyn_explicit['x'], dyn_explicit['u']], [dyn_explicit['b']])
-    # dyn_f = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=vwx, impose_acceleration_directly=False)
-    # fun_mat = ca.Function('f_mat', [dyn_f['x'], dyn_f['u']], [dyn_f['a'], dyn_f['c']])
-    #
-    # aero_forces = []
-    # for x, ui, nu in zip(sol_x[1:, :], u, sol_nu):
-    #     b = fun_b(x, ui)
-    #     ddx = b[:dyn_explicit['n_elements']*3]
-    #
-    #     a, c = fun_mat(x, [ui[0], 0, 0, 0])
-    #     eps = np.array(a@b - c)  # print(np.sum(np.abs(eps) > 1e-9)) -
-    #     f_aero = eps[(dyn_f['n_elements']-1)*3:dyn_f['n_elements']*3]
-    #     aero_forces.append(np.linalg.norm(f_aero))
-    #
-    #     # a, c = fun_mat(x, [ui[0], *f_aero])
-    #     # eps = np.array(a@b - c)
-    #     # print(np.sum(np.abs(eps) > 1e-9))
-    #
-    # plt.figure()
-    # plt.plot(aero_forces)
+    infer_aero_forces = False
+    if infer_aero_forces:
+        dyn_explicit = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, True, vwx=vwx, impose_acceleration_directly=True)
+        fun_b = ca.Function('f_b', [dyn_explicit['x'], dyn_explicit['u']], [dyn_explicit['b']])
+        dyn_f = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=vwx, impose_acceleration_directly=False)
+        fun_mat = ca.Function('f_mat', [dyn_f['x'], dyn_f['u']], [dyn_f['a'], dyn_f['c']])
+
+        aero_forces = []
+        for x, ui, nu in zip(sol_x[1:, :], u, sol_nu):
+            b = fun_b(x, ui)
+            ddx = b[:dyn_explicit['n_elements']*3]
+
+            a, c = fun_mat(x, [ui[0], 0, 0, 0])
+            eps = np.array(a@b - c)  # print(np.sum(np.abs(eps) > 1e-9)) -
+            f_aero = eps[(dyn_f['n_elements']-1)*3:dyn_f['n_elements']*3]
+            aero_forces.append(np.linalg.norm(f_aero))
+
+            # a, c = fun_mat(x, [ui[0], *f_aero])
+            # eps = np.array(a@b - c)
+            # print(np.sum(np.abs(eps) > 1e-9))
+
+        plt.figure()
+        plt.plot(aero_forces)
 
 if __name__ == "__main__":
     # run_helical_flight()

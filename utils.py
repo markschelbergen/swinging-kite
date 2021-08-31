@@ -143,6 +143,7 @@ def calc_rpy_wrt_tangential_plane(df):
 
 
 def read_and_transform_flight_data():
+    from turning_center import find_turns_for_rolling_window
     yr, m, d = 2019, 10, 8
     i_cycle = 65
     file_name = '{:d}{:02d}{:02d}_{:04d}.csv'.format(yr, m, d, i_cycle)
@@ -152,6 +153,7 @@ def read_and_transform_flight_data():
     df = df[255:625]
     df['time'] = df['time'] - df['time'].iloc[0]
     df = df.interpolate()
+    df.kite_azimuth = -df.kite_azimuth
     df.ground_tether_force = df.ground_tether_force * 9.81
 
     with open('20191008_{:04d}_rpy.npy'.format(i_cycle), 'rb') as f:
