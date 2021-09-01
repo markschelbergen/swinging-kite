@@ -16,6 +16,36 @@ def plot_vector(p0, v, ax, scale_vector=2, color='g', label=None):
     ax.plot3D(vector[0], vector[1], vector[2], color=color, label=label)
 
 
+def rotation_matrix_earth_sphere(phi=0., beta=np.pi/2., yaw=0.):
+    # Note that the elevation angle should be 90 degrees to yield the unity matrix.
+    # For kappa=0, the sphere coordinates are given in the polar, azimuth, and radial direction.
+    r1 = np.array([
+        [np.cos(phi), -np.sin(phi), 0],
+        [np.sin(phi), np.cos(phi), 0],
+        [0, 0, 1]
+    ])
+
+    r2 = np.array([
+        [np.cos(np.pi/2-beta), 0, np.sin(np.pi/2-beta)],
+        [0, 1, 0],
+        [-np.sin(np.pi/2-beta), 0, np.cos(np.pi/2-beta)]
+    ])
+
+    r3 = np.array([
+        [np.cos(yaw), -np.sin(yaw), 0],
+        [np.sin(yaw), np.cos(yaw), 0],
+        [0, 0, 1]
+    ])
+
+    return r1.dot(r2).dot(r3)
+
+
+def plot_vector_2d(p0, v, ax, scale_vector=.01, color='g', linestyle='-', label=None):
+    p1 = p0 + v * scale_vector
+    vector = np.vstack(([p0], [p1])).T
+    ax.plot(vector[0], vector[1], color=color, label=label, linestyle=linestyle)
+
+
 def unravel_euler_angles(rm, sequence='321', elevation_ref=None, azimuth_ref=None):
     # Extracting orientation angles from rotation matrix, use inertial (e.g. earth) to body reference frame rotation
     # matrix as input!
@@ -149,7 +179,7 @@ def read_and_transform_flight_data():
     file_name = '{:d}{:02d}{:02d}_{:04d}.csv'.format(yr, m, d, i_cycle)
 
     df = pd.read_csv(file_name)
-    # print(list(df))
+    print(list(df))
     df = df[255:625]
     df['time'] = df['time'] - df['time'].iloc[0]
     df = df.interpolate()
@@ -175,7 +205,5 @@ def read_and_transform_flight_data():
                                                            upwind_direction), axis=1)
     df[['ax', 'ay']] = df.apply(tranform_to_wind_rf, args=(['ax', 'ay'], ['ax', 'ay'],
                                                            upwind_direction), axis=1)
-
-    df['radius'] = np.sum(df[['rx', 'ry', 'rz']].values**2, axis=1)**.5
 
     return df
