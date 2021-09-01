@@ -9,6 +9,7 @@ from utils import calc_cartesian_coords_enu, plot_vector, unravel_euler_angles, 
     read_and_transform_flight_data
 from paul_williams_model import shoot
 from scipy.optimize import least_squares
+from turning_center import find_turns_for_rolling_window, evaluate_acceleration
 
 
 def run_helical_flight():
@@ -100,7 +101,8 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
     get_rotation_matrices = ca.Function('get_rotation_matrices', [dyn['x'], dyn['u']],
                                         [dyn['rotation_matrices']['tangential_plane'],
                                          dyn['rotation_matrices']['last_element']])
-    ypr = np.empty((n_intervals, 3))
+    ypr = np.empty((n_intervals+1, 3))
+    ypr[0, :] = np.nan
     rm_tau2e = np.empty((n_intervals, 3, 3))
     rm_t2e = np.empty((n_intervals, 3, 3))
     for i, (xi, ui) in enumerate(zip(sol_x[1:, :], u)):  # Determine at end of interval - as done for lagrangian multipliers
@@ -111,27 +113,30 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
         rm_t2e[i, :, :] = rm_t2e_i
         rm_tau2t = rm_t2e_i.T.dot(rm_tau2e_i)
 
-        ypr[i, :] = unravel_euler_angles(rm_tau2t, '321')
+        ypr[i+1, :] = unravel_euler_angles(rm_tau2t, '321')
 
     highlight_time_points = [0, 97, 107, 205, 215]
 
     fig, ax_ypr = plt.subplots(3, 1, sharex=True)
     plt.suptitle("3-2-1 Euler angles between tangential\nand last tether element ref. frame")
-    ax_ypr[0].plot(t[1:], ypr[:, 0]*180./np.pi, label='sim')
+    ax_ypr[0].plot(t, ypr[:, 0]*180./np.pi, label='sim')
     ax_ypr[0].set_ylabel("Yaw [deg]")
-    ax_ypr[1].plot(t[1:], ypr[:, 1]*180./np.pi, label='sim')
+    ax_ypr[1].plot(t, ypr[:, 1]*180./np.pi, label='sim')
     ax_ypr[1].set_ylabel("Pitch [deg]")
-    ax_ypr[2].plot(t[1:], ypr[:, 2]*180./np.pi, label='sim')
+    ax_ypr[2].plot(t, ypr[:, 2]*180./np.pi, label='sim')
     ax_ypr[2].set_ylabel("Roll [deg]")
     ax_ypr[2].set_xlabel("Time [s]")
     for i in highlight_time_points:
-        ax_ypr[1].plot(t[i], ypr[i+1, 1]*180./np.pi, 's')
-        ax_ypr[2].plot(t[i], ypr[i+1, 2]*180./np.pi, 's')
+        ax_ypr[1].plot(t[i], ypr[i, 1]*180./np.pi, 's')
+        ax_ypr[2].plot(t[i], ypr[i, 2]*180./np.pi, 's')
 
     for a in ax_ypr: a.grid()
     if flight_data is not None:
+        ypr_bridle_rbr = np.load('ypr_bridle_rigid_body_rotation.npy')
         ax_ypr[1].plot(flight_data.time, flight_data.pitch_tau * 180. / np.pi, label='mea')
+        ax_ypr[1].plot(flight_data.time, ypr_bridle_rbr[:, 1] * 180. / np.pi, '--', label='rbr')
         ax_ypr[2].plot(flight_data.time, flight_data.roll_tau * 180. / np.pi, label='mea')
+        ax_ypr[2].plot(flight_data.time, ypr_bridle_rbr[:, 2] * 180. / np.pi, '--', label='rbr')
         ax_ypr[2].legend()
         for a in ax_ypr: plot_flight_sections(a, flight_data)
 
@@ -318,17 +323,26 @@ def match_measured_tether_speed(df):
     return sol.value(controls)
 
 
-def run_simulation_with_measured_acceleration(realistic_tether_input=True):
+def run_simulation_with_fitted_acceleration(realistic_tether_input=True):
     vwx = 9
     # Get tether model.
     separate_kcu_mass = True
     n_tether_elements = 30
-    dyn = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=vwx, impose_acceleration_directly=True)
+    #TODO: running with Williams consistent model
+    dyn = derive_tether_model_kcu_williams(n_tether_elements, False, vwx=vwx, impose_acceleration_directly=True)
+    # dyn = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=vwx, impose_acceleration_directly=True)
 
     flight_data = read_and_transform_flight_data()  # Read flight data.
+    find_turns_for_rolling_window(flight_data)
+    evaluate_acceleration(flight_data)
     # for k in list(df): print(k)
     tf = .1  # Time step of the simulation - fixed by flight data time resolution.
     n_intervals = flight_data.shape[0] - 1  # Number of simulation steps - fixed by selected flight data interval.
+
+    # Infer kite acceleration from measurements.
+    # x_kite, a_kite = find_acceleration_matching_kite_trajectory(flight_data)
+    # np.save('kite_states.npy', np.hstack((x_kite, np.vstack((a_kite, [[np.nan]*3])))))
+    x_kite, a_kite = np.load('kite_states.npy')[:, :6], np.load('kite_states.npy')[:-1, 6:]
 
     # Control input for this simulation exists of tether acceleration and accelerations on last point mass.
     if realistic_tether_input:  # Infer tether acceleration from measurements.
@@ -337,11 +351,6 @@ def run_simulation_with_measured_acceleration(realistic_tether_input=True):
     else:  # Run simulation with constant tether acceleration and, in case the latter is set to zero, constant tether
         # speed.
         ddl = 0
-
-    # Infer kite acceleration from measurements.
-    # x_kite, a_kite = find_acceleration_matching_kite_trajectory(flight_data)
-    # np.save('kite_states.npy', np.hstack((x_kite, np.vstack((a_kite, [[np.nan]*3])))))
-    x_kite, a_kite = np.load('kite_states.npy')[:, :6], np.load('kite_states.npy')[:-1, 6:]
 
     # Set control input array for simulation.
     u = np.zeros((n_intervals, 4))
@@ -365,9 +374,9 @@ def run_simulation_with_measured_acceleration(realistic_tether_input=True):
     positions = []
     for i in range(2):
         row = flight_data.iloc[i]
-        args = (l0, n_tether_elements, x_kite[i, :3], x_kite[i, 3:6],
-                a_kite[i, :], vwx, separate_kcu_mass, False)
-        opt_res = least_squares(shoot, list(row[['kite_elevation', 'kite_azimuth', 'radius']]), args=args,
+        args = (l0, n_tether_elements, x_kite[i, :3], list(row[['omx_opt', 'omy_opt', 'omz_opt']]), vwx,
+                separate_kcu_mass, False)
+        opt_res = least_squares(shoot, list(row[['kite_elevation', 'kite_azimuth', 'kite_distance']]), args=args,
                                 kwargs={'find_force': True}, verbose=0)
         positions.append(shoot(opt_res.x, *args, return_values=True, find_force=True)[0][1:, :])
     r = positions[0]
@@ -406,5 +415,5 @@ def run_simulation_with_measured_acceleration(realistic_tether_input=True):
 
 if __name__ == "__main__":
     # run_helical_flight()
-    run_simulation_with_measured_acceleration()
+    run_simulation_with_fitted_acceleration()
     plt.show()
