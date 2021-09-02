@@ -10,10 +10,10 @@ def calc_cartesian_coords_enu(az, el, r):
     return np.array((x, y, z))
 
 
-def plot_vector(p0, v, ax, scale_vector=2, color='g', label=None):
+def plot_vector(p0, v, ax, scale_vector=2, color=None, label=None, linestyle=None):
     p1 = p0 + v * scale_vector
     vector = np.vstack(([p0], [p1])).T
-    ax.plot3D(vector[0], vector[1], vector[2], color=color, label=label)
+    ax.plot3D(vector[0], vector[1], vector[2], color=color, label=label, linestyle=linestyle)
 
 
 def rotation_matrix_earth_sphere(phi=0., beta=np.pi/2., yaw=0.):

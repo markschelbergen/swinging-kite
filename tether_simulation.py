@@ -146,9 +146,6 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
     if animate:
         for i, ti in enumerate(t):
             ax3d.cla()
-            # ax3d.set_xlim([0, 150])
-            # ax3d.set_ylim([-75, 75])
-            # ax3d.set_zlim([0, 150])
 
             ax3d.set_xlim([0, 250])
             ax3d.set_ylim([-125, 125])
@@ -323,7 +320,7 @@ def match_measured_tether_speed(df):
     return sol.value(controls)
 
 
-def run_simulation_with_fitted_acceleration(realistic_tether_input=True):
+def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate=True):
     vwx = 9
     # Get tether model.
     separate_kcu_mass = True
@@ -387,7 +384,7 @@ def run_simulation_with_fitted_acceleration(realistic_tether_input=True):
     check_constraints(dyn, x0)
 
     # Run simulation.
-    sol_x, sol_nu = run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=False, flight_data=flight_data)
+    sol_x, sol_nu = run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=animate, flight_data=flight_data)
 
     infer_aero_forces = False
     if infer_aero_forces:

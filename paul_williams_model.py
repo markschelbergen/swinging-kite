@@ -328,7 +328,7 @@ def find_and_plot_tether_lengths(generate_sim_input=False):  #, separate_kcu_mas
     ax[2].set_ylabel('Tether speed [m/s]')
 
     if not shoot_args['elastic_elements']:
-        tether_length_and_speed, tether_acceleration = match_tether_length(tether_lengths_incl_bridle, flight_data.kite_distance)
+        tether_length_and_speed, tether_acceleration = match_tether_length_and_speed(tether_lengths_incl_bridle, flight_data.ground_tether_reelout_speed, flight_data.kite_distance)
         print("Start tether speed", tether_length_and_speed[0, 1])
         ax[0].plot(flight_data.time, tether_length_and_speed[:, 0]-flight_data.kite_distance, '--')
         ax[1].plot(flight_data.time, tether_length_and_speed[:, 0], '--')
@@ -350,7 +350,7 @@ def find_and_plot_tether_lengths(generate_sim_input=False):  #, separate_kcu_mas
     plt.show()
 
 
-def match_tether_length(tether_lengths, radius):
+def match_tether_length_and_speed(tether_lengths, tether_speeds, radius):
     import casadi as ca
 
     n_intervals = len(tether_lengths)-1
@@ -385,7 +385,7 @@ def match_tether_length(tether_lengths, radius):
     # opti.set_initial(states, df['ground_tether_reelout_speed'].values)
     # opti.set_initial(controls, np.diff(df['ground_tether_reelout_speed'].values)/.1)
 
-    opti.minimize(ca.sumsqr(states[:, 0] - np.array(tether_lengths)))
+    opti.minimize(ca.sumsqr(states[:, 0] - np.array(tether_lengths)) + ca.sumsqr(states[:, 1] - np.array(tether_speeds)))
     opti.subject_to(opti.bounded(-.1, controls[1:]-controls[:-1], .1))
     opti.subject_to(states[:, 0] - radius > .01)
 

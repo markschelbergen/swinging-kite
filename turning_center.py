@@ -105,15 +105,8 @@ def evaluate_acceleration(flight_data, plot=False):
     flight_data['omz_opt'] = omega_optimized[:, 2]
 
 
-if __name__ == "__main__":
+def plot_estimated_turn_center(animate=True):
     import matplotlib.pyplot as plt
-    from utils import read_and_transform_flight_data
-
-    animate = False
-    flight_data = read_and_transform_flight_data()
-    find_turns_for_rolling_window(flight_data)
-    evaluate_acceleration(flight_data)
-
     ax = plt.figure().gca()
     if animate:
         for i in range(flight_data.shape[0]):
@@ -137,4 +130,105 @@ if __name__ == "__main__":
 
         ax.plot(flight_data['kite_azimuth'], flight_data['kite_elevation'])
         ax.plot(flight_data['azimuth_turn_center'], flight_data['elevation_turn_center'], linewidth=.5, color='grey')
-    plt.show()
+
+
+def visualize_estimated_rotation_vector(animate=False):
+    import matplotlib.pyplot as plt
+    from mpl_toolkits import mplot3d
+    from utils import plot_vector
+
+    def calc_sphere_coords(x, y, z):
+        r = (x**2 + y**2 + z**2)**.5
+        el = np.arcsin(z/r)*180./np.pi
+        az = np.arctan2(y, x)*180./np.pi
+        return az, el, r
+
+    fig, ax = plt.subplots(3, 2)
+    ax[0, 0].get_shared_y_axes().join(*ax[:, 0])
+
+    ax[0, 0].plot(flight_data.time, flight_data.omx_opt, color='C1', label='opt')
+    ax[0, 0].plot(flight_data.time, flight_data.omx, color='C2', label='est')
+    ax[0, 0].set_ylabel('x [rad/s]')
+    ax[1, 0].plot(flight_data.time, flight_data.omy_opt, color='C1', label='opt')
+    ax[1, 0].plot(flight_data.time, flight_data.omy, color='C2', label='est')
+    ax[1, 0].set_ylabel('y [rad/s]')
+    ax[2, 0].plot(flight_data.time, flight_data.omz_opt, color='C1', label='opt')
+    ax[2, 0].plot(flight_data.time, flight_data.omz, color='C2', label='est')
+    ax[2, 0].set_ylabel('z [rad/s]')
+
+    om_opt_sphere = calc_sphere_coords(flight_data.omx_opt, flight_data.omy_opt, flight_data.omz_opt)
+    om_sphere = calc_sphere_coords(flight_data.omx, flight_data.omy, flight_data.omz)
+    ax[0, 1].plot(flight_data.time, om_opt_sphere[0], color='C1', label='opt')
+    ax[0, 1].plot(flight_data.time, om_sphere[0], color='C2', label='est')
+    ax[0, 1].set_ylabel('Azimuth [deg]')
+    ax[1, 1].plot(flight_data.time, om_opt_sphere[1], color='C1', label='opt')
+    ax[1, 1].plot(flight_data.time, om_sphere[1], color='C2', label='est')
+    ax[1, 1].set_ylabel('Elevation [deg]')
+    ax[2, 1].plot(flight_data.time, om_opt_sphere[2], color='C1', label='opt')
+    ax[2, 1].plot(flight_data.time, om_sphere[2], color='C2', label='est')
+    ax[2, 1].set_ylabel('Magnitude [rad/s]')
+    ax[2, 1].legend()
+
+    mark_points = [44, 105, 151, 210]  #, 250, 320]
+
+    def plot_omega_evolution(i, ti=None):
+        idx2i = flight_data.index[:i+1]
+        ax[0].plot(flight_data.loc[idx2i, 'kite_azimuth']*180./np.pi, flight_data.loc[idx2i, 'kite_elevation']*180./np.pi)
+        if ti is not None:
+            ax[0].text(10, 39, "{:.2f} s".format(ti))
+        ax[0].set_xlim([-20, 20])
+        ax[0].set_ylim([28, 42])
+        # ax[1].plot(om_opt_sphere[0].iloc[:i+1], om_opt_sphere[1].iloc[:i+1], color='C1', label='opt', linewidth=.5)
+        # ax[1].plot(om_opt_sphere[0].iloc[i], om_opt_sphere[1].iloc[i], 's', color='C1')
+        ax[1].plot(om_sphere[0].iloc[:i+1], om_sphere[1].iloc[:i+1], color='C2', label='est', linewidth=.5)
+        ax[1].plot(om_sphere[0].iloc[i], om_sphere[1].iloc[i], 's', color='C2')
+
+        for j, im in enumerate(mark_points):
+            if im > i:
+                break
+            az, el = flight_data.loc[idx2i[im], 'kite_azimuth']*180./np.pi, flight_data.loc[idx2i[im], 'kite_elevation']*180./np.pi
+            ax[0].plot(az, el, 'o', mfc="white", alpha=1, ms=12, mec='C{}'.format(j))
+            ax[0].plot(az, el, marker='${}$'.format(j+1), alpha=1, ms=7, mec='C{}'.format(j))
+            ax[1].plot(om_sphere[0].iloc[im], om_sphere[1].iloc[im], 'o', mfc="white", alpha=1, ms=12, mec='C{}'.format(j))
+            ax[1].plot(om_sphere[0].iloc[im], om_sphere[1].iloc[im], marker='${}$'.format(j+1), alpha=1, ms=7, mec='C{}'.format(j))
+
+        ax[1].set_xlim([-180, 180])
+        ax[1].set_ylim([-80, 80])
+        ax[1].legend()
+
+    fig, ax = plt.subplots(1, 2)
+    if animate:
+        for i, ti in enumerate(flight_data.time):
+            for a in ax: a.cla()
+            plot_omega_evolution(i, ti)
+            plt.pause(0.001)
+    else:
+        plot_omega_evolution(flight_data.shape[0]-1)
+
+    plt.figure(figsize=(8, 6))
+    ax3d = plt.axes(projection='3d')
+    ax3d.plot3D(flight_data['rx'], flight_data['ry'], flight_data['rz'], label='')
+    ax3d.set_xlim([0, 250])
+    ax3d.set_ylim([-125, 125])
+    ax3d.set_zlim([0, 250])
+    ax3d.set_xlabel("x [m]")
+    ax3d.set_ylabel("y [m]")
+    ax3d.set_zlabel("z [m]")
+    for j, im in enumerate(mark_points):
+        idx = flight_data.index[im]
+        om = flight_data.loc[idx, ['omx', 'omy', 'omz']]
+        plot_vector(np.zeros(3), om, ax3d, 1e2, color='C{}'.format(j), label='{}'.format(j+1))
+        plot_vector(np.zeros(3), om/np.linalg.norm(om), ax3d, 3e2, color='C{}'.format(j), linestyle=':')
+        plot_vector(np.zeros(3), flight_data.loc[idx, ['rx', 'ry', 'rz']], ax3d, 1, color='C{}'.format(j), linestyle='--')
+    ax3d.legend()
+
+
+if __name__ == "__main__":
+    from utils import read_and_transform_flight_data
+    from matplotlib.pyplot import show
+    flight_data = read_and_transform_flight_data()
+    find_turns_for_rolling_window(flight_data)
+    evaluate_acceleration(flight_data)
+    plot_estimated_turn_center()
+    # visualize_estimated_rotation_vector()
+    show()
