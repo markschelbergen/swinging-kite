@@ -227,6 +227,7 @@ def setup_integrator_kinematic_model(tf):
 
 
 def find_acceleration_matching_kite_trajectory(df, verify=False):
+    from utils import tranform_to_wind_rf
     n_intervals = df.shape[0]-1
     tf = .1
 
@@ -246,7 +247,9 @@ def find_acceleration_matching_kite_trajectory(df, verify=False):
 
     # Initial guesses
     opti.set_initial(states, df[['rx', 'ry', 'rz', 'vx', 'vy', 'vz']].values)
-    opti.set_initial(controls, df.loc[df.index[:-1], ['ax', 'ay', 'az']].values)
+
+    accelerations = np.vstack([[np.gradient(df['vx'])/.1], [np.gradient(df['vy'])/.1], [np.gradient(df['vz'])/.1]]).T
+    opti.set_initial(controls, accelerations)
 
     opti.minimize(ca.sumsqr(states - df[['rx', 'ry', 'rz', 'vx', 'vy', 'vz']].values))
 

@@ -40,10 +40,10 @@ def rotation_matrix_earth_sphere(phi=0., beta=np.pi/2., yaw=0.):
     return r1.dot(r2).dot(r3)
 
 
-def plot_vector_2d(p0, v, ax, scale_vector=.01, color='g', linestyle='-', label=None):
+def plot_vector_2d(p0, v, ax, scale_vector=.01, **kwargs):
     p1 = p0 + v * scale_vector
     vector = np.vstack(([p0], [p1])).T
-    ax.plot(vector[0], vector[1], color=color, label=label, linestyle=linestyle)
+    ax.plot(vector[0], vector[1], **kwargs)
 
 
 def unravel_euler_angles(rm, sequence='321', elevation_ref=None, azimuth_ref=None):
@@ -104,7 +104,11 @@ def tranform_to_wind_rf(row, cols_in, cols_out, upwind_direction):
         [np.cos(phi), np.sin(phi)],
         [-np.sin(phi), np.cos(phi)],
     ])
-    return pd.Series(rm.dot(np.array([x, y])), index=cols_out)
+    res = rm.dot(np.array([x, y]))
+    if cols_out is not None:
+        return pd.Series(res, index=cols_out)
+    else:
+        return res
 
 
 def plot_flight_sections(ax, df):
@@ -169,7 +173,7 @@ def calc_rpy_wrt_tangential_plane(df):
         y, p, r = unravel_euler_angles(rm_spsi2b, '321')  # 312 would give virtually the same result.
         pitch_spsi2b.append(p), yaw_spsi2b.append(y), roll_spsi2b.append(r)
 
-    return pitch_spsi2b, roll_spsi2b
+    return pitch_spsi2b, roll_spsi2b, yaw_spsi2b
 
 
 def read_and_transform_flight_data():
@@ -191,19 +195,19 @@ def read_and_transform_flight_data():
         df['roll'] = rpy[df.index[0]:df.index[-1]+1, 0]
         df['pitch'] = rpy[df.index[0]:df.index[-1]+1, 1]
         df['yaw'] = rpy[df.index[0]:df.index[-1]+1, 2]
-    df['pitch_tau'], df['roll_tau'] = calc_rpy_wrt_tangential_plane(df)
+    # df['roll'] = (df.kite_0_roll-8.5)*np.pi/180.
+    # df['pitch'] = (-df.kite_0_pitch+3)*np.pi/180.
+    # df['yaw'] = -(df.kite_0_yaw-90.)*np.pi/180.
+    df['pitch_tau'], df['roll_tau'], df['yaw_tau'] = calc_rpy_wrt_tangential_plane(df)
 
     df['rz'] = df['kite_height']
     df['vz'] = -df['kite_0_vz']
-    df['ax'], df['ay'], df['az'] = np.gradient(df['kite_0_vy'])/.1, np.gradient(df['kite_0_vx'])/.1,\
-                                   -np.gradient(df['kite_0_vz'])/.1
+
 
     upwind_direction = df.loc[df.index[0], 'est_upwind_direction']
     df[['rx', 'ry']] = df.apply(tranform_to_wind_rf, args=(['kite_pos_east', 'kite_pos_north'], ['rx', 'ry'],
                                                            upwind_direction), axis=1)
     df[['vx', 'vy']] = df.apply(tranform_to_wind_rf, args=(['kite_0_vy', 'kite_0_vx'], ['vx', 'vy'],
-                                                           upwind_direction), axis=1)
-    df[['ax', 'ay']] = df.apply(tranform_to_wind_rf, args=(['ax', 'ay'], ['ax', 'ay'],
                                                            upwind_direction), axis=1)
 
     return df

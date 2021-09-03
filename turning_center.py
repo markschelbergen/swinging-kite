@@ -55,10 +55,16 @@ def evaluate_acceleration(flight_data, plot=False):
 
     omega_inferred = np.empty((flight_data.shape[0], 3))
     omega_optimized = np.empty((flight_data.shape[0], 3))
+
+    kite_inferred_states = np.load('kite_states.npy')
+
     for i, (idx, row) in enumerate(flight_data.iterrows()):
         # Project measured acceleration on sphere surface
-        a_kite = np.array(list(row[['ax', 'ay', 'az']]))
+        a_kite = kite_inferred_states[i, 6:]
+        if i == flight_data.shape[0] - 1:
+            a_kite = kite_inferred_states[i-1, 6:]
         v_kite = np.array(list(row[['vx', 'vy', 'vz']]))
+
         r_kite = np.array(list(row[['rx', 'ry', 'rz']]))
 
         if not np.isnan(row['elevation_turn_center']):  # Turning kite
@@ -105,7 +111,7 @@ def evaluate_acceleration(flight_data, plot=False):
     flight_data['omz_opt'] = omega_optimized[:, 2]
 
 
-def plot_estimated_turn_center(animate=True):
+def plot_estimated_turn_center(flight_data, animate=True):
     import matplotlib.pyplot as plt
     ax = plt.figure().gca()
     if animate:
@@ -132,7 +138,7 @@ def plot_estimated_turn_center(animate=True):
         ax.plot(flight_data['azimuth_turn_center'], flight_data['elevation_turn_center'], linewidth=.5, color='grey')
 
 
-def visualize_estimated_rotation_vector(animate=False):
+def visualize_estimated_rotation_vector(flight_data, animate=True):
     import matplotlib.pyplot as plt
     from mpl_toolkits import mplot3d
     from utils import plot_vector
@@ -178,10 +184,17 @@ def visualize_estimated_rotation_vector(animate=False):
             ax[0].text(10, 39, "{:.2f} s".format(ti))
         ax[0].set_xlim([-20, 20])
         ax[0].set_ylim([28, 42])
+        ax[0].set_xlabel('Kite position azimuth [deg]')
+        ax[0].set_ylabel('Kite position elevation [deg]')
         # ax[1].plot(om_opt_sphere[0].iloc[:i+1], om_opt_sphere[1].iloc[:i+1], color='C1', label='opt', linewidth=.5)
         # ax[1].plot(om_opt_sphere[0].iloc[i], om_opt_sphere[1].iloc[i], 's', color='C1')
         ax[1].plot(om_sphere[0].iloc[:i+1], om_sphere[1].iloc[:i+1], color='C2', label='est', linewidth=.5)
         ax[1].plot(om_sphere[0].iloc[i], om_sphere[1].iloc[i], 's', color='C2')
+        ax[1].set_xlim([-180, 180])
+        ax[1].set_ylim([-80, 80])
+        ax[1].legend()
+        ax[1].set_xlabel('Rotational vector azimuth [deg]')
+        ax[1].set_ylabel('Rotational vector elevation [deg]')
 
         for j, im in enumerate(mark_points):
             if im > i:
@@ -191,10 +204,6 @@ def visualize_estimated_rotation_vector(animate=False):
             ax[0].plot(az, el, marker='${}$'.format(j+1), alpha=1, ms=7, mec='C{}'.format(j))
             ax[1].plot(om_sphere[0].iloc[im], om_sphere[1].iloc[im], 'o', mfc="white", alpha=1, ms=12, mec='C{}'.format(j))
             ax[1].plot(om_sphere[0].iloc[im], om_sphere[1].iloc[im], marker='${}$'.format(j+1), alpha=1, ms=7, mec='C{}'.format(j))
-
-        ax[1].set_xlim([-180, 180])
-        ax[1].set_ylim([-80, 80])
-        ax[1].legend()
 
     fig, ax = plt.subplots(1, 2)
     if animate:
@@ -229,6 +238,6 @@ if __name__ == "__main__":
     flight_data = read_and_transform_flight_data()
     find_turns_for_rolling_window(flight_data)
     evaluate_acceleration(flight_data)
-    plot_estimated_turn_center()
-    # visualize_estimated_rotation_vector()
+    plot_estimated_turn_center(flight_data)
+    # visualize_estimated_rotation_vector(flight_data)
     show()
