@@ -29,7 +29,7 @@ def plot_velocity_and_respective_kite_attitude(flight_data):
     for a in ax: a.grid()
 
 
-def animate_kite_attitude(flight_data, animate=True):
+def animate_kite_attitude(flight_data, vwx=9, animate=True):
     ax = plt.figure().gca()
     if animate:
         for i, (idx, row) in enumerate(flight_data.iterrows()):
@@ -53,11 +53,23 @@ def animate_kite_attitude(flight_data, animate=True):
                 vec_proj = np.array([vec_sphere[1], -vec_sphere[0]])
                 plot_vector_2d([row['kite_azimuth']*180./np.pi, row['kite_elevation']*180./np.pi], vec_proj, ax, 1e1, **kwargs)
 
+            def plot_apparent_wind_velocity(row, **kwargs):
+                v_kite = np.array(list(row[['vx', 'vy', 'vz']]))
+                v_app = v_kite - np.array([vwx, 0, 0])
+                r_es = rotation_matrix_earth_sphere(row['kite_azimuth'], row['kite_elevation'], 0)
+
+                vec_sphere = r_es.T.dot(v_app)
+                vec_proj = np.array([vec_sphere[1], -vec_sphere[0]])
+                plot_vector_2d([row['kite_azimuth']*180./np.pi, row['kite_elevation']*180./np.pi], vec_proj, ax, 1, **kwargs)
+
+
             plot_ex(row)
+            plot_apparent_wind_velocity(row)
 
             for j in range(0, i, 10):
                 rowj = flight_data.iloc[j]
                 plot_ex(rowj, color='grey', linewidth=.5)
+                plot_apparent_wind_velocity(rowj, color='cyan', linewidth=.5)
 
             plt.pause(0.001)
 
