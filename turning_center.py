@@ -45,7 +45,7 @@ def rigid_body_rotation_errors(omega, r_kite, v_kite, a_kite):
     return np.hstack((v_err, a_err))
 
 
-def evaluate_acceleration(flight_data, plot=False):
+def determine_rigid_body_rotation(flight_data, plot=False):
     from utils import plot_vector_2d, rotation_matrix_earth_sphere
 
     if plot:
@@ -56,13 +56,11 @@ def evaluate_acceleration(flight_data, plot=False):
     omega_inferred = np.empty((flight_data.shape[0], 3))
     omega_optimized = np.empty((flight_data.shape[0], 3))
 
-    kite_inferred_states = np.load('kite_states.npy')
-
     for i, (idx, row) in enumerate(flight_data.iterrows()):
         # Project measured acceleration on sphere surface
-        a_kite = kite_inferred_states[i, 6:]
+        a_kite = np.array(list(row[['ax', 'ay', 'az']]))
         if i == flight_data.shape[0] - 1:
-            a_kite = kite_inferred_states[i-1, 6:]
+            a_kite = np.array(list(flight_data.loc[idx-1, ['ax', 'ay', 'az']]))
         v_kite = np.array(list(row[['vx', 'vy', 'vz']]))
 
         r_kite = np.array(list(row[['rx', 'ry', 'rz']]))
@@ -237,7 +235,7 @@ if __name__ == "__main__":
     from matplotlib.pyplot import show
     flight_data = read_and_transform_flight_data()
     find_turns_for_rolling_window(flight_data)
-    evaluate_acceleration(flight_data)
+    determine_rigid_body_rotation(flight_data)
     plot_estimated_turn_center(flight_data)
     # visualize_estimated_rotation_vector(flight_data)
     show()

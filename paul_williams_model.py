@@ -146,7 +146,7 @@ def find_tether_length():
     from mpl_toolkits import mplot3d
     from scipy.optimize import least_squares
 
-    args = (1000, 10, [200, 0, 100], [2, 20, 1], [0, 0, 0], 9)
+    args = (1000, 10, [200, 0, 100], [2, 20, 1], [0, 0, 0], 10)
     opt_res = least_squares(shoot, (20*np.pi/180., -15*np.pi/180., 250), args=args, verbose=2)
     print("Resulting tether length:", opt_res.x[2])
     p = shoot(opt_res.x, *args, return_values=True)[0]
@@ -216,7 +216,7 @@ def find_tether_lengths(flight_data, shoot_args, ax):
         rm_body2b = rm_b2e_i.T.dot(rm_earth2body.T)
         ypr_body2bridle[i, :] = unravel_euler_angles(rm_body2b, '321')
 
-        if i % 10 == 0:
+        if i % 25 == 0:
             ax.plot3D(p[:, 0], p[:, 1], p[:, 2], '-', linewidth=.5, color='grey')
 
         verify = False
@@ -268,7 +268,7 @@ def find_tether_forces(flight_data, tether_lengths, shoot_args):
 def find_and_plot_tether_lengths(generate_sim_input=False):  #, separate_kcu_mass=True, elastic_elements=False):
     shoot_args = {
         'n_tether_elements': 30,
-        'vwx': 9,
+        'vwx': 10,
         'separate_kcu_mass': True,
         'elastic_elements': False,
     }
@@ -276,15 +276,14 @@ def find_and_plot_tether_lengths(generate_sim_input=False):  #, separate_kcu_mas
     import matplotlib.pyplot as plt
     from mpl_toolkits import mplot3d
     from utils import read_and_transform_flight_data
-    from turning_center import find_turns_for_rolling_window, evaluate_acceleration
+    from turning_center import find_turns_for_rolling_window, determine_rigid_body_rotation
     flight_data = read_and_transform_flight_data()  # Read flight data.
     find_turns_for_rolling_window(flight_data)
-    evaluate_acceleration(flight_data)
+    determine_rigid_body_rotation(flight_data)
 
     if generate_sim_input:
         # Using inferred position compatible with integrator such that the tether acceleration can be used as input for
         # the simulation.
-        flight_data[['rx', 'ry', 'rz']] = np.load('kite_states.npy')[:, :3]
         flight_data['kite_distance'] = np.sum(flight_data[['rx', 'ry', 'rz']].values**2, axis=1)**.5
 
     plt.figure(figsize=(8, 6))
@@ -354,12 +353,11 @@ def find_and_plot_tether_lengths(generate_sim_input=False):  #, separate_kcu_mas
     for a in ax_ypr: plot_flight_sections(a, flight_data)
 
     fig, ax = plt.subplots(4, 1, sharex=True)
-    coef = np.polyfit(flight_data.time, flight_data.kite_distance, 1)
-    poly1d_fn = np.poly1d(coef)
-    delta_linear_fun = flight_data.kite_distance - poly1d_fn(flight_data.time)
-
     ax[0].plot(flight_data.time, np.array(strained_tether_lengths_incl_bridle)-flight_data.kite_distance, label='sag')
-    ax[0].plot(flight_data.time, delta_linear_fun, label='delta r wrt linear')
+    # coef = np.polyfit(flight_data.time, flight_data.kite_distance, 1)
+    # poly1d_fn = np.poly1d(coef)
+    # delta_linear_fun = flight_data.kite_distance - poly1d_fn(flight_data.time)
+    # ax[0].plot(flight_data.time, delta_linear_fun, label='delta r wrt linear')
     ax[0].legend()
     # ax[0].plot(flight_data.time, np.array(tether_lengths_incl_bridle)-flight_data.kite_distance, ':')
     ax[0].fill_between(flight_data.time, 0, 1, where=flight_data['azimuth_turn_center'].isnull(), facecolor='lightgrey', alpha=0.5)
@@ -367,6 +365,8 @@ def find_and_plot_tether_lengths(generate_sim_input=False):  #, separate_kcu_mas
     ax[1].plot(flight_data.time, strained_tether_lengths_incl_bridle, label='strained')
     ax[1].plot(flight_data.time, tether_lengths_incl_bridle, ':', label='unstrained')
     ax[1].plot(flight_data.time, flight_data.kite_distance, '-.', label='radial position')
+    # ax[1].plot(flight_data.time, flight_data.ground_tether_length, '-.', label='mea')
+    ax[1].legend()
     ax[1].set_ylabel('Tether length [m]')
     ax[2].plot(flight_data.time[:-1], np.diff(tether_lengths)/.1)
     ax[2].plot(flight_data.time, flight_data.ground_tether_reelout_speed, ':')

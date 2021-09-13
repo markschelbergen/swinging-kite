@@ -29,7 +29,7 @@ def plot_velocity_and_respective_kite_attitude(flight_data):
     for a in ax: a.grid()
 
 
-def animate_kite_attitude(flight_data, vwx=9, animate=True):
+def animate_kite_attitude(flight_data, vwx=10, animate=True):
     ax = plt.figure().gca()
     if animate:
         for i, (idx, row) in enumerate(flight_data.iterrows()):

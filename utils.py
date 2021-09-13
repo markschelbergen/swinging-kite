@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from find_consistent_kite_states import find_acceleration_matching_kite_trajectory
 
 
 def calc_cartesian_coords_enu(az, el, r):
@@ -183,7 +184,6 @@ def read_and_transform_flight_data():
     file_name = '{:d}{:02d}{:02d}_{:04d}.csv'.format(yr, m, d, i_cycle)
 
     df = pd.read_csv(file_name)
-    # print(list(df))
     df = df[255:625]
     df['time'] = df['time'] - df['time'].iloc[0]
     df = df.interpolate()
@@ -209,5 +209,15 @@ def read_and_transform_flight_data():
                                                            upwind_direction), axis=1)
     df[['vx', 'vy']] = df.apply(tranform_to_wind_rf, args=(['kite_0_vy', 'kite_0_vx'], ['vx', 'vy'],
                                                            upwind_direction), axis=1)
+
+    # Infer kite acceleration from measurements.
+    x_kite, a_kite = find_acceleration_matching_kite_trajectory(df)
+    # np.save('kite_states.npy', np.hstack((x_kite, np.vstack((a_kite, [[np.nan]*3])))))
+    # x_kite, a_kite = np.load('kite_states.npy')[:, :6], np.load('kite_states.npy')[:-1, 6:]
+    df[['rx', 'ry', 'rz']] = x_kite[:, :3]
+    df[['vx', 'vy', 'vz']] = x_kite[:, 3:6]
+    df['ax'] = np.hstack((a_kite[:, 0], [np.nan]))
+    df['ay'] = np.hstack((a_kite[:, 1], [np.nan]))
+    df['az'] = np.hstack((a_kite[:, 2], [np.nan]))
 
     return df
