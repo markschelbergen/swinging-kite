@@ -11,6 +11,13 @@ def calc_cartesian_coords_enu(az, el, r):
     return np.array((x, y, z))
 
 
+def calc_spherical_coords(x, y, z):
+    az = np.arctan2(y, x)
+    r = (x**2 + y**2 + z**2)**.5
+    el = np.arcsin(z/r)
+    return np.array((az, el, r))
+
+
 def plot_vector(p0, v, ax, scale_vector=2, color=None, label=None, linestyle=None):
     p1 = p0 + v * scale_vector
     vector = np.vstack(([p0], [p1])).T
@@ -98,18 +105,13 @@ def unravel_euler_angles(rm, sequence='321', elevation_ref=None, azimuth_ref=Non
     return yaw, pitch, roll
 
 
-def tranform_to_wind_rf(row, cols_in, cols_out, upwind_direction):
-    x, y = row[cols_in[0]], row[cols_in[1]]
+def tranform_to_wind_rf(x, y, upwind_direction):
     phi = -upwind_direction-np.pi/2.
     rm = np.array([
         [np.cos(phi), np.sin(phi)],
         [-np.sin(phi), np.cos(phi)],
     ])
-    res = rm.dot(np.array([x, y]))
-    if cols_out is not None:
-        return pd.Series(res, index=cols_out)
-    else:
-        return res
+    return rm.dot(np.array([x, y]))
 
 
 def plot_flight_sections(ax, df):
@@ -177,7 +179,7 @@ def calc_rpy_wrt_tangential_plane(df):
     return pitch_spsi2b, roll_spsi2b, yaw_spsi2b
 
 
-def read_and_transform_flight_data():
+def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=False):
     from turning_center import find_turns_for_rolling_window
     yr, m, d = 2019, 10, 8
     i_cycle = 65
@@ -203,19 +205,20 @@ def read_and_transform_flight_data():
     df['rz'] = df['kite_height']
     df['vz'] = -df['kite_0_vz']
 
-
     upwind_direction = df.loc[df.index[0], 'est_upwind_direction']
-    df[['rx', 'ry']] = df.apply(tranform_to_wind_rf, args=(['kite_pos_east', 'kite_pos_north'], ['rx', 'ry'],
-                                                           upwind_direction), axis=1)
-    df[['vx', 'vy']] = df.apply(tranform_to_wind_rf, args=(['kite_0_vy', 'kite_0_vx'], ['vx', 'vy'],
-                                                           upwind_direction), axis=1)
+    df['rx'], df['ry'] = tranform_to_wind_rf(df['kite_pos_east'], df['kite_pos_north'], upwind_direction)
+    df['vx'], df['vy'] = tranform_to_wind_rf(df['kite_0_vy'], df['kite_0_vx'], upwind_direction)
 
     # Infer kite acceleration from measurements.
     x_kite, a_kite = find_acceleration_matching_kite_trajectory(df)
     # np.save('kite_states.npy', np.hstack((x_kite, np.vstack((a_kite, [[np.nan]*3])))))
     # x_kite, a_kite = np.load('kite_states.npy')[:, :6], np.load('kite_states.npy')[:-1, 6:]
-    df[['rx', 'ry', 'rz']] = x_kite[:, :3]
-    df[['vx', 'vy', 'vz']] = x_kite[:, 3:6]
+
+    if make_trajectory_consistent_with_integrator:
+        df[['rx', 'ry', 'rz']] = x_kite[:, :3]
+        df['kite_azimuth'], df['kite_elevation'], df['kite_distance'] = calc_spherical_coords(df['rx'], df['ry'], df['rz'])
+        df[['vx', 'vy', 'vz']] = x_kite[:, 3:6]
+
     df['ax'] = np.hstack((a_kite[:, 0], [np.nan]))
     df['ay'] = np.hstack((a_kite[:, 1], [np.nan]))
     df['az'] = np.hstack((a_kite[:, 2], [np.nan]))

@@ -236,6 +236,6 @@ if __name__ == "__main__":
     flight_data = read_and_transform_flight_data()
     find_turns_for_rolling_window(flight_data)
     determine_rigid_body_rotation(flight_data)
-    plot_estimated_turn_center(flight_data)
-    # visualize_estimated_rotation_vector(flight_data)
+    # plot_estimated_turn_center(flight_data)
+    visualize_estimated_rotation_vector(flight_data)
     show()

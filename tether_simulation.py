@@ -259,7 +259,7 @@ def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate
     dyn = derive_tether_model_kcu_williams(n_tether_elements, False, vwx=vwx, impose_acceleration_directly=True)
     # dyn = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=vwx, impose_acceleration_directly=True)
 
-    flight_data = read_and_transform_flight_data()  # Read flight data.
+    flight_data = read_and_transform_flight_data(True)  # Read flight data.
     find_turns_for_rolling_window(flight_data)
     determine_rigid_body_rotation(flight_data)
     # for k in list(df): print(k)
@@ -278,17 +278,19 @@ def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate
     # Set control input array for simulation.
     u = np.zeros((n_intervals, 4))
     u[:, 0] = ddl
-    u[:, 1:] = a_kite
+    u[:, 1:] = flight_data[['ax', 'ay', 'az']].values[:-1, :]
 
     # Get starting position of simulation
-    p0, p1 = x_kite[0, :3], x_kite[1, :3]
-    r0 = np.sum(p0**2)**.5
+    p0 = flight_data.iloc[0][['rx', 'ry', 'rz']].values
+    # p1 = flight_data.iloc[0][['rx', 'ry', 'rz']].values
+    # # p0, p1 = x_kite[0, :3], x_kite[1, :3]
     if realistic_tether_input:
         # dl0 = flight_data.loc[flight_data.index[0], 'ground_tether_reelout_speed']
         # delta_l0 = 1.75  # Initial difference between the radial position of the kite and tether length.
         dl0 = np.load('tether_states.npy')[0, 1]
         l0 = np.load('tether_states.npy')[0, 0]
     else:
+        r0 = flight_data.iloc[0]['kite_distance']
         dl0 = 1.24
         delta_l0 = 1.2  #1.05  # Initial difference between the radial position of the kite and tether length.
         l0 = r0+delta_l0  # Lower to increase tether force, but setting too low results in the tether being
@@ -297,7 +299,7 @@ def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate
     positions = []
     for i in range(2):
         row = flight_data.iloc[i]
-        args = (l0, n_tether_elements, x_kite[i, :3], list(row[['omx_opt', 'omy_opt', 'omz_opt']]), vwx,
+        args = (l0, n_tether_elements, list(row[['rx', 'ry', 'rz']]), list(row[['omx_opt', 'omy_opt', 'omz_opt']]), vwx,
                 separate_kcu_mass, False)
         opt_res = least_squares(shoot, list(row[['kite_elevation', 'kite_azimuth', 'kite_distance']]), args=args,
                                 kwargs={'find_force': True}, verbose=0)
@@ -306,7 +308,7 @@ def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate
     v = (positions[1]-positions[0])/tf
 
     x0 = np.vstack((r.reshape((-1, 1)), v.reshape((-1, 1)), [[l0], [dl0]]))
-    x0 = find_initial_velocities_satisfying_constraints(dyn, x0, x_kite[0, 3:])
+    x0 = find_initial_velocities_satisfying_constraints(dyn, x0, p0)
     check_constraints(dyn, x0)
 
     # Run simulation.
