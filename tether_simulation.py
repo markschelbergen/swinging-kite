@@ -266,7 +266,6 @@ def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate
     tf = .1  # Time step of the simulation - fixed by flight data time resolution.
     n_intervals = flight_data.shape[0] - 1  # Number of simulation steps - fixed by selected flight data interval.
 
-
     # Control input for this simulation exists of tether acceleration and accelerations on last point mass.
     if realistic_tether_input:  # Infer tether acceleration from measurements.
         # ddl = match_measured_tether_speed(flight_data)
@@ -281,9 +280,6 @@ def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate
     u[:, 1:] = flight_data[['ax', 'ay', 'az']].values[:-1, :]
 
     # Get starting position of simulation
-    p0 = flight_data.iloc[0][['rx', 'ry', 'rz']].values
-    # p1 = flight_data.iloc[0][['rx', 'ry', 'rz']].values
-    # # p0, p1 = x_kite[0, :3], x_kite[1, :3]
     if realistic_tether_input:
         # dl0 = flight_data.loc[flight_data.index[0], 'ground_tether_reelout_speed']
         # delta_l0 = 1.75  # Initial difference between the radial position of the kite and tether length.
@@ -308,7 +304,7 @@ def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate
     v = (positions[1]-positions[0])/tf
 
     x0 = np.vstack((r.reshape((-1, 1)), v.reshape((-1, 1)), [[l0], [dl0]]))
-    x0 = find_initial_velocities_satisfying_constraints(dyn, x0, p0)
+    x0 = find_initial_velocities_satisfying_constraints(dyn, x0, flight_data.iloc[0][['vx', 'vy', 'vz']])
     check_constraints(dyn, x0)
 
     # Run simulation.
