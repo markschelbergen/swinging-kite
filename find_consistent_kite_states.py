@@ -37,12 +37,16 @@ def find_acceleration_matching_kite_trajectory(df, verify=False):
         opti.subject_to(states[k+1, :].T == res["xf"])
 
     # Initial guesses
-    opti.set_initial(states, df[['rx', 'ry', 'rz', 'vx', 'vy', 'vz']].values)
+    mea_states = df[['rx', 'ry', 'rz', 'vx', 'vy', 'vz']].values
+    opti.set_initial(states, mea_states)
 
     accelerations = np.vstack([[np.gradient(df['vx'])/.1], [np.gradient(df['vy'])/.1], [np.gradient(df['vz'])/.1]]).T
     opti.set_initial(controls, accelerations[:-1, :])
 
-    opti.minimize(ca.sumsqr(states - df[['rx', 'ry', 'rz', 'vx', 'vy', 'vz']].values))
+    weights = np.ones(mea_states.shape)
+    # weights[:, :3] = 3
+
+    opti.minimize(ca.sumsqr(weights*(states - mea_states)))
 
     # solve optimization problem
     opti.solver('ipopt')
@@ -51,6 +55,25 @@ def find_acceleration_matching_kite_trajectory(df, verify=False):
 
     states_sol = sol.value(states)
     controls_sol = sol.value(controls)
+
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(5, 2)
+    for i in range(3):
+        ax[i, 0].plot(states_sol[:, i])
+        ax[i, 0].plot(mea_states[:, i], '--')
+        ax[i, 1].plot(states_sol[:, i+3])
+        ax[i, 1].plot(mea_states[:, i+3], '--')
+    r_sol = np.sum(states_sol[:, :3]**2, axis=1)**.5
+    r_mea = np.sum(mea_states[:, :3]**2, axis=1)**.5
+    ax[3, 0].plot(r_sol)
+    ax[3, 0].plot(r_mea, '--')
+    ax[4, 0].plot(r_sol-r_mea)
+
+    v_sol = np.sum(states_sol[:, 3:6]**2, axis=1)**.5
+    v_mea = np.sum(mea_states[:, 3:6]**2, axis=1)**.5
+    ax[3, 1].plot(v_sol)
+    ax[3, 1].plot(v_mea, '--')
+    ax[4, 1].plot(v_sol-v_mea)
 
     # # Uncomment lower to evaluate results using measurements directly
     # states_sol[0, :] = df.loc[df.index[0], ['rx', 'ry', 'rz', 'kite_1_vy', 'kite_1_vx', 'kite_1_vz']]

@@ -115,7 +115,7 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
 
         ypr[i+1, :] = unravel_euler_angles(rm_tau2t, '321')
 
-    highlight_time_points = [0, 97, 107, 205, 215]
+    highlight_time_points = np.array([97, 107, 205, 215]) - 44  # 0,
 
     fig, ax_ypr = plt.subplots(3, 1, sharex=True)
     plt.suptitle("3-2-1 Euler angles between tangential\nand last tether element ref. frame")

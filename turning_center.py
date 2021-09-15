@@ -56,6 +56,9 @@ def determine_rigid_body_rotation(flight_data, plot=False):
     omega_inferred = np.empty((flight_data.shape[0], 3))
     omega_optimized = np.empty((flight_data.shape[0], 3))
 
+    omega_straight = np.empty(flight_data.shape[0])
+    omega_turn = np.empty(flight_data.shape[0])
+
     for i, (idx, row) in enumerate(flight_data.iterrows()):
         # Project measured acceleration on sphere surface
         a_kite = np.array(list(row[['ax', 'ay', 'az']]))
@@ -78,6 +81,9 @@ def determine_rigid_body_rotation(flight_data, plot=False):
             om = np.cross(r_turn, v_kite_rot)/np.linalg.norm(r_turn)**2
             a_kite_rot = np.cross(om, np.cross(om, r_kite))
 
+            omega_straight[i] = np.nan
+            omega_turn[i] = np.linalg.norm(om)
+
             om_opt = least_squares(rigid_body_rotation_errors, om, args=(r_kite, v_kite, a_kite), verbose=0).x
             v_om = np.cross(om_opt, r_kite)
             a_om = np.cross(om_opt, v_om)
@@ -97,6 +103,8 @@ def determine_rigid_body_rotation(flight_data, plot=False):
         else:
             om = np.cross(r_kite, v_kite)/np.linalg.norm(r_kite)**2
             om_opt = least_squares(rigid_body_rotation_errors, om, args=(r_kite, v_kite, a_kite), verbose=0).x
+            omega_straight[i] = np.linalg.norm(om)
+            omega_turn[i] = np.nan
 
         omega_inferred[i, :] = om
         omega_optimized[i, :] = om_opt
@@ -107,36 +115,58 @@ def determine_rigid_body_rotation(flight_data, plot=False):
     flight_data['omx_opt'] = omega_optimized[:, 0]
     flight_data['omy_opt'] = omega_optimized[:, 1]
     flight_data['omz_opt'] = omega_optimized[:, 2]
+    flight_data['om_straight'] = omega_straight
+    flight_data['om_turn'] = omega_turn
 
 
-def plot_estimated_turn_center(flight_data, animate=True):
+def plot_estimated_turn_center(flight_data, animate=False):
     import matplotlib.pyplot as plt
-    ax = plt.figure().gca()
+    ax = plt.figure(figsize=[6.4, 3.8]).gca()
     if animate:
         for i in range(flight_data.shape[0]):
             ax.cla()
-            ax.set_xlim([-.4, .4])
-            ax.set_ylim([.4, .8])
-            ax.set_xlabel('Azimuth [rad]')
-            ax.set_ylabel('Elevation [rad]')
+            ax.set_xlim([-20, 20])
+            ax.set_ylim([24, 46])
+            ax.set_xlabel('Azimuth [$^\circ$]')
+            ax.set_ylabel('Elevation [$^\circ$]')
             ax.set_aspect('equal')
 
-            ax.plot(flight_data.iloc[:i]['kite_azimuth'], flight_data.iloc[:i]['kite_elevation'])
-            ax.plot(flight_data.iloc[:i]['azimuth_turn_center'], flight_data.iloc[:i]['elevation_turn_center'], linewidth=.5, color='grey')
-            ax.plot(flight_data.iloc[i]['azimuth_turn_center'], flight_data.iloc[i]['elevation_turn_center'], 's')
+            ax.plot(flight_data.iloc[:i]['kite_azimuth']*180./np.pi, flight_data.iloc[:i]['kite_elevation']*180./np.pi)
+            ax.plot(flight_data.iloc[:i]['azimuth_turn_center']*180./np.pi, flight_data.iloc[:i]['elevation_turn_center']*180./np.pi, linewidth=.5, color='grey')
+            ax.plot(flight_data.iloc[i]['azimuth_turn_center']*180./np.pi, flight_data.iloc[i]['elevation_turn_center']*180./np.pi, 's')
             plt.pause(0.001)
     else:
-        ax.set_xlim([-.4, .4])
-        ax.set_ylim([.4, .8])
-        ax.set_xlabel('Azimuth [rad]')
-        ax.set_ylabel('Elevation [rad]')
+        ax.set_xlim([-22, 22])
+        ax.set_ylim([24, 47])
+        ax.set_xlabel('Azimuth [$^\circ$]')
+        ax.set_ylabel('Elevation [$^\circ$]')
         ax.set_aspect('equal')
 
-        ax.plot(flight_data['kite_azimuth'], flight_data['kite_elevation'])
-        ax.plot(flight_data['azimuth_turn_center'], flight_data['elevation_turn_center'], linewidth=.5, color='grey')
+        mask_straight_path = np.isnan(flight_data['azimuth_turn_center'])
+        az, el = flight_data['kite_azimuth']*180./np.pi, flight_data['kite_elevation']*180./np.pi
+        ax.plot(np.where(mask_straight_path, az, np.nan), np.where(mask_straight_path, el, np.nan), color='C0', label='Straight')
+        ax.plot(np.where(~mask_straight_path, az, np.nan), np.where(~mask_straight_path, el, np.nan), '--', color='C0', label='Turn')
+        ax.plot(flight_data['azimuth_turn_center']*180./np.pi, flight_data['elevation_turn_center']*180./np.pi, linewidth=.8, color='grey', label='Turn center')
+        ax.legend()
+
+        mark_points = [40, 57, 76, 146, 163, 177, 192]
+
+        for j, im in enumerate(mark_points):
+            az, el = flight_data.iloc[im]['kite_azimuth']*180./np.pi, flight_data.iloc[im]['kite_elevation']*180./np.pi
+            ax.plot(az, el, 'o', mfc="white", alpha=1, ms=12, mec='C{}'.format(j))
+            ax.plot(az, el, marker='${}$'.format(j+1), alpha=1, ms=7, mec='C{}'.format(j))
+
+            az, el = flight_data.iloc[im]['azimuth_turn_center']*180./np.pi, flight_data.iloc[im]['elevation_turn_center']*180./np.pi
+            ax.plot(az, el, 'o', mfc="white", alpha=1, ms=6, mec='C{}'.format(j))
+
+        ax.plot(flight_data['azimuth_turn_center']*180./np.pi, flight_data['elevation_turn_center']*180./np.pi, linewidth=.5, color='grey')
+        ax.grid()
+
+        plt.figure()
+        plt.plot(flight_data['time'], flight_data['azimuth_turn_center'])
 
 
-def visualize_estimated_rotation_vector(flight_data, animate=True):
+def visualize_estimated_rotation_vector(flight_data, animate=False):
     import matplotlib.pyplot as plt
     from mpl_toolkits import mplot3d
     from utils import plot_vector
@@ -173,7 +203,19 @@ def visualize_estimated_rotation_vector(flight_data, animate=True):
     ax[2, 1].set_ylabel('Magnitude [rad/s]')
     ax[2, 1].legend()
 
-    mark_points = [44, 105, 151, 210]  #, 250, 320]
+    plt.figure(figsize=[6.4, 2.4])
+    plt.subplots_adjust(bottom=0.18, top=.95)
+    plt.plot(flight_data.time, flight_data.om_straight, color='C0', label='Straight')
+    plt.plot(flight_data.time, flight_data.om_turn, '--', color='C0', label='Turn')
+    plt.plot(flight_data.time, om_opt_sphere[2], color='C1', label='Data-inferred')
+    plt.grid()
+    plt.xlim([0, 21.3])
+    plt.ylim([0, None])
+    plt.xlabel('Time [s]')
+    plt.ylabel('Rotational speed [rad/s]')
+    plt.legend()
+
+    mark_points = np.array([44, 105, 151, 210]) - 44  #, 250, 320]
 
     def plot_omega_evolution(i, ti=None):
         idx2i = flight_data.index[:i+1]
@@ -234,8 +276,15 @@ if __name__ == "__main__":
     from utils import read_and_transform_flight_data
     from matplotlib.pyplot import show
     flight_data = read_and_transform_flight_data()
+    print("Min. and max. height: {:.2f} and {:.2f}".format(flight_data['rz'].min(), flight_data['rz'].max()))
+    print("Start and height radial position: {:.2f} and {:.2f}".format(flight_data.iloc[0]['kite_distance'], flight_data.iloc[-1]['kite_distance']))
+    # import matplotlib.pyplot as plt
+    # plt.plot(flight_data.time, flight_data.kite_azimuth*180./np.pi)
+    # plt.grid()
+    # plt.show()
+    # exit()
     find_turns_for_rolling_window(flight_data)
     determine_rigid_body_rotation(flight_data)
-    # plot_estimated_turn_center(flight_data)
+    plot_estimated_turn_center(flight_data)
     visualize_estimated_rotation_vector(flight_data)
     show()

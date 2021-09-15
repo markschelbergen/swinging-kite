@@ -186,7 +186,7 @@ def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=Fa
     file_name = '{:d}{:02d}{:02d}_{:04d}.csv'.format(yr, m, d, i_cycle)
 
     df = pd.read_csv(file_name)
-    df = df[255:625]
+    df = df[299:513]  #df[255:625]
     df['time'] = df['time'] - df['time'].iloc[0]
     df = df.interpolate()
     df.kite_azimuth = -df.kite_azimuth
