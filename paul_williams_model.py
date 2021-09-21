@@ -270,7 +270,7 @@ def find_and_plot_tether_lengths(generate_sim_input=False):  #, separate_kcu_mas
         'n_tether_elements': 30,
         'vwx': 10,
         'separate_kcu_mass': True,
-        'elastic_elements': False,
+        'elastic_elements': True,
     }
 
     import matplotlib.pyplot as plt
@@ -304,7 +304,7 @@ def find_and_plot_tether_lengths(generate_sim_input=False):  #, separate_kcu_mas
     ax[0, 0].set_ylabel("$F_{aero,x}$ [N]")
     ax[1, 0].plot(flight_data.time, aero_force_body[:, 1])
     ax[1, 0].plot(flight_data.time, aero_force_bridle[:, 1])
-    ax[1, 0].plot(flight_data.time, flight_data.kite_set_steering*1e1, label='set steering')
+    # ax[1, 0].plot(flight_data.time, flight_data.kite_set_steering*1e1, label='set steering')
     ax[1, 0].plot(flight_data.time, flight_data.kite_actual_steering*1e1, label='actual steering')
     ax[1, 0].legend()
     ax[1, 0].set_ylabel("$F_{aero,y}$ [N]")
@@ -355,12 +355,14 @@ def find_and_plot_tether_lengths(generate_sim_input=False):  #, separate_kcu_mas
     # ax[0].plot(flight_data.time, delta_linear_fun, label='delta r wrt linear')
     ax[0].legend()
     # ax[0].plot(flight_data.time, np.array(tether_lengths_incl_bridle)-flight_data.kite_distance, ':')
-    ax[0].fill_between(flight_data.time, 0, 1, where=flight_data['azimuth_turn_center'].isnull(), facecolor='lightgrey', alpha=0.5)
+    ax[0].fill_between(flight_data.time, 0, 1, where=flight_data['flag_turn'], facecolor='lightsteelblue', alpha=0.5)
     ax[0].set_ylabel('Sag length [m]')
     ax[1].plot(flight_data.time, strained_tether_lengths_incl_bridle, label='strained')
     ax[1].plot(flight_data.time, tether_lengths_incl_bridle, ':', label='unstrained')
     ax[1].plot(flight_data.time, flight_data.kite_distance, '-.', label='radial position')
-    ax[1].plot(flight_data.time, flight_data.ground_tether_length, '-.', label='mea')
+    # bias = np.mean(tether_lengths_incl_bridle - flight_data.ground_tether_length)
+    # print("Tether length bias", bias)
+    # ax[1].plot(flight_data.time, flight_data.ground_tether_length + bias, '-.', label='mea')
     ax[1].legend()
     ax[1].set_ylabel('Tether length [m]')
     ax[2].plot(flight_data.time[:-1], np.diff(tether_lengths)/.1)

@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from find_consistent_kite_states import find_acceleration_matching_kite_trajectory
@@ -117,8 +118,7 @@ def tranform_to_wind_rf(x, y, upwind_direction):
 def plot_flight_sections(ax, df):
     y0, y1 = ax.get_ylim()
     ax.set_ylim([y0, y1])
-    ax.fill_between(df.time, y0, y1, where=df['pattern_section'] == 2, facecolor='lightgrey', alpha=0.5)
-    ax.fill_between(df.time, y0, y1, where=df['pattern_section'] == 0, facecolor='lightsteelblue', alpha=0.5)
+    ax.fill_between(df.time, y0, y1, where=df['flag_turn'], facecolor='lightsteelblue', alpha=0.5) # lightgrey
     # for i_ph in range(6):
     #     mask = df['phase'] == i_ph
     #     if np.sum(mask) > 0:
@@ -181,33 +181,51 @@ def calc_rpy_wrt_tangential_plane(df):
 
 def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=False):
     from turning_center import find_turns_for_rolling_window
-    yr, m, d = 2019, 10, 8
-    i_cycle = 65
-    file_name = '{:d}{:02d}{:02d}_{:04d}.csv'.format(yr, m, d, i_cycle)
 
+    # yr, m, d = 2019, 10, 8
+    # i_cycle = 65
+    # file_name = '{:d}{:02d}{:02d}_{:04d}.csv'.format(yr, m, d, i_cycle)
+    # df = pd.read_csv(file_name)
+    # with open('20191008_{:04d}_rpy.npy'.format(i_cycle), 'rb') as f:
+    #     rpy = np.load(f)
+    #     df['roll'] = rpy[:, 0]*180./np.pi
+    #     df['pitch'] = -rpy[:, 1]*180./np.pi
+    #     df['yaw'] = -rpy[:, 2]*180./np.pi + 90
+    # df = df[299:513]
+    #
+    # # 'ground_tether_length'
+    # cols = ['time', 'date', 'time_of_day', 'kite_0_vx', 'kite_0_vy', 'kite_0_vz', 'kite_1_ax', 'kite_1_ay', 'kite_1_az',
+    #         'kite_0_roll', 'kite_0_pitch', 'kite_0_yaw', 'ground_tether_reelout_speed', 'ground_tether_force',
+    #         'est_upwind_direction', 'kite_pos_east', 'kite_pos_north', 'kite_height',
+    #         'kite_elevation', 'kite_azimuth', 'kite_distance', 'kite_actual_steering', 'roll', 'pitch', 'yaw']
+    # df.to_csv("20191008_0065_fig8.csv", index=False, na_rep='nan', columns=cols)
+
+    file_name = '20191008_0065_fig8.csv'
     df = pd.read_csv(file_name)
-    df = df[299:513]  #df[255:625]
-    df['time'] = df['time'] - df['time'].iloc[0]
-    df = df.interpolate()
-    df.kite_azimuth = -df.kite_azimuth
-    df.ground_tether_force = df.ground_tether_force * 9.81
 
-    with open('20191008_{:04d}_rpy.npy'.format(i_cycle), 'rb') as f:
-        rpy = np.load(f)
-        df['roll'] = rpy[df.index[0]:df.index[-1]+1, 0]
-        df['pitch'] = rpy[df.index[0]:df.index[-1]+1, 1]
-        df['yaw'] = rpy[df.index[0]:df.index[-1]+1, 2]
+    df = df.interpolate()
+    df['time'] = df['time'] - df['time'].iloc[0]
+
+    df['roll'] = df.roll*np.pi/180.
+    df['pitch'] = -df.pitch*np.pi/180.
+    df['yaw'] = -(df.yaw-90.)*np.pi/180.
     # df['roll'] = (df.kite_0_roll-8.5)*np.pi/180.
     # df['pitch'] = (-df.kite_0_pitch+3)*np.pi/180.
     # df['yaw'] = -(df.kite_0_yaw-90.)*np.pi/180.
+
+    df.kite_azimuth = -df.kite_azimuth
+    df.ground_tether_force = df.ground_tether_force * 9.81
+
     df['pitch_tau'], df['roll_tau'], df['yaw_tau'] = calc_rpy_wrt_tangential_plane(df)
 
     df['rz'] = df['kite_height']
     df['vz'] = -df['kite_0_vz']
+    df['kite_1_az'] = -df['kite_1_az']
 
     upwind_direction = df.loc[df.index[0], 'est_upwind_direction']
     df['rx'], df['ry'] = tranform_to_wind_rf(df['kite_pos_east'], df['kite_pos_north'], upwind_direction)
     df['vx'], df['vy'] = tranform_to_wind_rf(df['kite_0_vy'], df['kite_0_vx'], upwind_direction)
+    df['kite_1_ax'], df['kite_1_ay'] = tranform_to_wind_rf(df['kite_1_ay'], df['kite_1_ax'], upwind_direction)
 
     # Infer kite acceleration from measurements.
     x_kite, a_kite = find_acceleration_matching_kite_trajectory(df)

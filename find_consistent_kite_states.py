@@ -40,7 +40,8 @@ def find_acceleration_matching_kite_trajectory(df, verify=False):
     mea_states = df[['rx', 'ry', 'rz', 'vx', 'vy', 'vz']].values
     opti.set_initial(states, mea_states)
 
-    accelerations = np.vstack([[np.gradient(df['vx'])/.1], [np.gradient(df['vy'])/.1], [np.gradient(df['vz'])/.1]]).T
+    # accelerations = np.vstack([[np.gradient(df['vx'])/.1], [np.gradient(df['vy'])/.1], [np.gradient(df['vz'])/.1]]).T
+    accelerations = df[['kite_1_ax', 'kite_1_ay', 'kite_1_az']].values
     opti.set_initial(controls, accelerations[:-1, :])
 
     weights = np.ones(mea_states.shape)
@@ -57,12 +58,22 @@ def find_acceleration_matching_kite_trajectory(df, verify=False):
     controls_sol = sol.value(controls)
 
     import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(5, 2)
+    fig, ax = plt.subplots(5, 3)
+    ax[0, 0].set_title('Position [m]')
+    ax[0, 1].set_title('Velocity [m/s]')
+    ax[0, 2].set_title('Acceleration [m/s$^2$]')
+    ax[0, 0].set_ylabel('x')
+    ax[1, 0].set_ylabel('y')
+    ax[2, 0].set_ylabel('z')
+    ax[3, 0].set_ylabel('mag')
+    ax[4, 0].set_ylabel('error')
     for i in range(3):
         ax[i, 0].plot(states_sol[:, i])
         ax[i, 0].plot(mea_states[:, i], '--')
         ax[i, 1].plot(states_sol[:, i+3])
         ax[i, 1].plot(mea_states[:, i+3], '--')
+        ax[i, 2].step(range(n_intervals), controls_sol[:, i], where='post')
+        ax[i, 2].plot(accelerations[:, i], '--')
     r_sol = np.sum(states_sol[:, :3]**2, axis=1)**.5
     r_mea = np.sum(mea_states[:, :3]**2, axis=1)**.5
     ax[3, 0].plot(r_sol)

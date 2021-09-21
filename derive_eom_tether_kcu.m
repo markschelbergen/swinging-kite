@@ -2,7 +2,7 @@
 clc;
 clear all;
 
-n_tether_elements = 2;
+n_tether_elements = 1;
 n_point_masses = n_tether_elements+1;
 
 vwx = sym('vwx');
@@ -29,6 +29,7 @@ cd_t = sym('cd_t');
 m_s = sym('m_s');  %pi*d_t^2/4 * l_s * rho_t;
 
 fa = sym('fa', [1 3]);
+fa_all = sym('fa', [6 1]);
 
 % States
 r = sym('r', [n_point_masses, 3]);
@@ -103,10 +104,17 @@ a00 = jacobian(jacobian(e_k, v), v)
 a10 = jacobian(c, r)
 
 a = [a00, a10.'; a10, zeros(n_point_masses, n_point_masses)]
-a((n_point_masses - 1) * 3+1:n_point_masses * 3+1, n_point_masses * 4) = 0
 
-b0 = f - jacobian(e_p, r).'
+%b0 = f - jacobian(e_p, r).'
+b0 = fa_all - jacobian(e_p, r).'
 b1 = -jacobian(a10*v, r)*v + [(dl_s^2 + l_s*ddl_s) * ones(n_tether_elements, 1); 0]
-dl_s = a10*v/l_s
+b = [b0; b1]
+
+dc = a10*v
+dl_s = dc/l_s
+
+latex(b)
+c
+dc
 
 
