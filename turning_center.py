@@ -8,6 +8,7 @@ def circle_residuals(c, x, y):
 
 r_limit = .25
 center_estimate = [(0, 0.7, .1), (0, 0.4, .1)]
+mark_points = [20, 40, 57, 76, 111, 146, 163, 177, 192]
 
 
 def find_turn_specs(az, el):
@@ -147,18 +148,17 @@ def plot_estimated_turn_center(flight_data, animate=False):
         ax.plot(flight_data['azimuth_turn_center']*180./np.pi, flight_data['elevation_turn_center']*180./np.pi, linewidth=.8, color='grey', label='Turn center')
         ax.legend()
 
-        mark_points = [40, 57, 76, 146, 163, 177, 192]
-
         for j, im in enumerate(mark_points):
+            az_tc, el_tc = flight_data.iloc[im]['azimuth_turn_center']*180./np.pi, flight_data.iloc[im]['elevation_turn_center']*180./np.pi
+            if np.isnan(az_tc):
+                marker = 's'
+            else:
+                marker = 'o'
+            ax.plot(az_tc, el_tc, marker, mfc="white", alpha=1, ms=6, mec='C{}'.format(j))
+
             az, el = flight_data.iloc[im]['kite_azimuth']*180./np.pi, flight_data.iloc[im]['kite_elevation']*180./np.pi
-            ax.plot(az, el, 'o', mfc="white", alpha=1, ms=12, mec='C{}'.format(j))
+            ax.plot(az, el, marker, mfc="white", alpha=1, ms=12, mec='C{}'.format(j))
             ax.plot(az, el, marker='${}$'.format(j+1), alpha=1, ms=7, mec='C{}'.format(j))
-
-            az, el = flight_data.iloc[im]['azimuth_turn_center']*180./np.pi, flight_data.iloc[im]['elevation_turn_center']*180./np.pi
-            ax.plot(az, el, 'o', mfc="white", alpha=1, ms=6, mec='C{}'.format(j))
-
-        plt.figure()
-        plt.plot(flight_data['time'], flight_data['azimuth_turn_center'])
 
 
 def visualize_estimated_rotation_vector(flight_data, animate=False):
