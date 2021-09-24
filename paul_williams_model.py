@@ -183,15 +183,15 @@ def find_tether_lengths(flight_data, shoot_args, ax):
     kite_front_wrt_projected_velocity = np.empty(flight_data.shape[0])
     ypr_body2bridle = np.empty((flight_data.shape[0], 3))
 
-    fig, ax_tau = plt.subplots(1, 2, sharey=True)
-    top = .75
+    fig, ax_tau = plt.subplots(1, 2, sharey=True, figsize=(6.4, 3.6))
+    ax_tau[1].invert_xaxis()
     wspace = .200
-    plt.subplots_adjust(top=top, wspace=wspace)
+    plt.subplots_adjust(top=0.805, bottom=0.13, left=0.11, right=0.97, wspace=wspace)
     ax_tau[0].set_ylabel("Radial position [m]")
     ax_tau[0].set_xlabel("Up-heading position [m]")
     ax_tau[1].set_xlabel("Cross-heading position [m]")
     ax_tau[0].set_xlim([-7.5, .5])
-    ax_tau[1].set_xlim([-4, 4])
+    ax_tau[1].set_xlim([4, -4])
     for a in ax_tau: a.grid()
 
     mp_counter = 0
@@ -250,12 +250,14 @@ def find_tether_lengths(flight_data, shoot_args, ax):
 
         if i in mark_points:
             clr = 'C{}'.format(mp_counter)
-            ax.plot3D(pos_e[:, 0], pos_e[:, 1], pos_e[:, 2], color=clr)  #, linewidth=.5, color='grey')
+            ax[0].plot3D(pos_e[:, 0], pos_e[:, 1], pos_e[:, 2], color=clr)  #, linewidth=.5, color='grey')
+            ax[1].plot(pos_e[:, 0], pos_e[:, 1], color=clr, label=mp_counter+1)
             # Cross-heading is preferred opposed to cross-course as it shows a helix shape of the tether at the outside
             # of the turns, which one could interpret as caused by the centripetal acceleration, however it can be
             # to the drag.
-            ax_tau[0].plot(pos_tau[:, 0], pos_tau[:, 2], color=clr, label='{}'.format(mp_counter+1))
-            ax_tau[1].plot(pos_tau[:, 1], pos_tau[:, 2], color=clr)
+            if mp_counter < 5:
+                ax_tau[0].plot(pos_tau[:, 0], pos_tau[:, 2], color=clr, label='{}'.format(mp_counter+1))
+                ax_tau[1].plot(pos_tau[:, 1], pos_tau[:, 2], color=clr)
             mp_counter += 1
 
         verify = False
@@ -271,7 +273,9 @@ def find_tether_lengths(flight_data, shoot_args, ax):
             c, d = dyn['f_mat'](x, u)
             eps = np.array(c@b - d)
             assert np.amax(np.abs(eps)) < 1e-6
-    ax_tau[0].legend(title='Point label', bbox_to_anchor=(.2, 1.05, 1.6+wspace, .5), loc="lower left", mode="expand",
+    ax_tau[0].legend(title='Instance label', bbox_to_anchor=(.2, 1.05, 1.6+wspace, .5), loc="lower left", mode="expand",
+                    borderaxespad=0, ncol=5)
+    ax[1].legend(title='Instance label', bbox_to_anchor=(.0, 1.05, 1., .5), loc="lower left", mode="expand",
                     borderaxespad=0, ncol=5)
 
     return tether_lengths, strained_tether_lengths, ypr_bridle, ypr_bridle_vk, ypr_tether, ypr_aero_force, aero_force_body, aero_force_bridle, apparent_flow_direction, kite_front_wrt_projected_velocity, ypr_body2bridle
@@ -314,19 +318,32 @@ def find_and_plot_tether_lengths(generate_sim_input=False):  #, separate_kcu_mas
         'elastic_elements': True,
     }
 
-
     from utils import read_and_transform_flight_data
     from turning_center import find_turns_for_rolling_window, determine_rigid_body_rotation
     flight_data = read_and_transform_flight_data()  # Read flight data.
     find_turns_for_rolling_window(flight_data)
     determine_rigid_body_rotation(flight_data)
 
-    plt.figure(figsize=(8, 6))
-    ax3d = plt.axes(projection='3d')
-    ax3d.plot3D(flight_data.rx, flight_data.ry, flight_data.rz, color='k')
-    ax3d.set_xlim([0, 250])
-    ax3d.set_ylim([-125, 125])
-    ax3d.set_zlim([0, 250])
+    # plt.figure(figsize=(3.6, 3.6))
+    fig, ax3d = plt.subplots(1, 2, figsize=(7.2, 3.6))
+    plt.subplots_adjust(top=1.0, bottom=0.03, left=0.0, right=0.98, hspace=0.2, wspace=0.4)
+    ax3d[0] = plt.subplot(121, projection='3d', proj_type='ortho')
+    ax3d[0].plot3D(flight_data.rx, flight_data.ry, flight_data.rz, color='k')
+    ax3d[0].set_xlim([0, 250])
+    ax3d[0].set_ylim([-125, 125])
+    ax3d[0].set_zlim([0, 250])
+    ax3d[0].set_xlabel(r'$x_{\rm w}$ [m]')
+    ax3d[0].set_ylabel(r'$y_{\rm w}$ [m]')
+    ax3d[0].set_zlabel(r'$z_{\rm w}$ [m]')
+    ax3d[0].set_box_aspect([1, 1, 1])  # As of matplotlib 3.3.0
+
+    ax3d[1].plot(flight_data.rx, flight_data.ry, color='k')
+    # ax3d[1].set_xlim([0, 260])
+    # ax3d[1].set_ylim([-130, 130])
+    ax3d[1].set_xlabel(r'$x_{\rm w}$ [m]')
+    ax3d[1].set_ylabel(r'$y_{\rm w}$ [m]')
+    ax3d[1].grid()
+    ax3d[1].set_aspect('equal')
 
     tether_lengths, strained_tether_lengths, ypr_bridle, ypr_bridle_vk, ypr_tether, ypr_aero_force, \
     aero_force_body, aero_force_bridle, flow_angles, kite_front_wrt_projected_velocity, ypr_body2bridle = find_tether_lengths(flight_data, shoot_args, ax3d)

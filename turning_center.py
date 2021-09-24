@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import least_squares
+from attitude_check import plot_apparent_wind_velocity
 
 
 def circle_residuals(c, x, y):
@@ -118,7 +119,7 @@ def determine_rigid_body_rotation(flight_data, plot=False):
     flight_data['om'] = omega_magnitude
 
 
-def plot_estimated_turn_center(flight_data, animate=False):
+def plot_estimated_turn_center(flight_data, animate=False, vwx=10):
     import matplotlib.pyplot as plt
     ax = plt.figure(figsize=[6.4, 3.8]).gca()
     if animate:
@@ -146,19 +147,28 @@ def plot_estimated_turn_center(flight_data, animate=False):
         ax.plot(np.where(flight_data['flag_turn'], az, np.nan), np.where(flight_data['flag_turn'], el, np.nan), '--', color='C0', label='Turn')
 
         ax.plot(flight_data['azimuth_turn_center']*180./np.pi, flight_data['elevation_turn_center']*180./np.pi, linewidth=.8, color='grey', label='Turn center')
-        ax.legend()
 
         for j, im in enumerate(mark_points):
-            az_tc, el_tc = flight_data.iloc[im]['azimuth_turn_center']*180./np.pi, flight_data.iloc[im]['elevation_turn_center']*180./np.pi
+            row = flight_data.iloc[im]
+
+            az_tc, el_tc = row['azimuth_turn_center']*180./np.pi, row['elevation_turn_center']*180./np.pi
             if np.isnan(az_tc):
                 marker = 's'
             else:
                 marker = 'o'
             ax.plot(az_tc, el_tc, marker, mfc="white", alpha=1, ms=6, mec='C{}'.format(j))
 
-            az, el = flight_data.iloc[im]['kite_azimuth']*180./np.pi, flight_data.iloc[im]['kite_elevation']*180./np.pi
+            az, el = row['kite_azimuth']*180./np.pi, row['kite_elevation']*180./np.pi
             ax.plot(az, el, marker, mfc="white", alpha=1, ms=12, mec='C{}'.format(j))
             ax.plot(az, el, marker='${}$'.format(j+1), alpha=1, ms=7, mec='C{}'.format(j))
+
+            if j == 0:
+                lbl = 'Heading'
+            else:
+                lbl = None
+            plot_apparent_wind_velocity(ax, row, vwx, .3, color='g', linestyle=':', label=lbl)
+        ax.legend(loc=9)
+        ax.grid()
 
 
 def visualize_estimated_rotation_vector(flight_data, animate=False):
@@ -268,6 +278,7 @@ def visualize_estimated_rotation_vector(flight_data, animate=False):
         plot_vector(np.zeros(3), om, ax3d, 1e2, color='C{}'.format(j), label='{}'.format(j+1))
         plot_vector(np.zeros(3), om/np.linalg.norm(om), ax3d, 3e2, color='C{}'.format(j), linestyle=':')
         plot_vector(np.zeros(3), flight_data.loc[idx, ['rx', 'ry', 'rz']], ax3d, 1, color='C{}'.format(j), linestyle='--')
+
     ax3d.legend()
 
 

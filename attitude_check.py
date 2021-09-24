@@ -1,5 +1,35 @@
 import numpy as np
-from turning_center import mark_points
+from utils import rotation_matrix_earth_sphere, plot_vector_2d, rotation_matrix_earth2body
+
+
+def plot_apparent_wind_velocity(ax, row, vwx, scale_vector=1, **kwargs):
+    v_kite = np.array(list(row[['vx', 'vy', 'vz']]))
+    v_app = v_kite - np.array([vwx, 0, 0])
+    r_es = rotation_matrix_earth_sphere(row['kite_azimuth'], row['kite_elevation'], 0)
+
+    vec_sphere = r_es.T.dot(v_app)
+    vec_proj = np.array([vec_sphere[1], -vec_sphere[0]])
+    plot_vector_2d([row['kite_azimuth']*180./np.pi, row['kite_elevation']*180./np.pi], vec_proj, ax, scale_vector,
+                   **kwargs)
+
+
+def plot_ex(ax, row, **kwargs):
+    r_es = rotation_matrix_earth_sphere(row['kite_azimuth'], row['kite_elevation'], 0)
+    rm_earth2body = rotation_matrix_earth2body(row['roll'], row['pitch'], row['yaw'])
+    exb_earth = rm_earth2body.T[:, 0]
+
+    vec_sphere = r_es.T.dot(exb_earth)
+    vec_proj = np.array([vec_sphere[1], -vec_sphere[0]])
+    plot_vector_2d([row['kite_azimuth']*180./np.pi, row['kite_elevation']*180./np.pi], vec_proj, ax, 1e1, **kwargs)
+
+
+def plot_kite_velocity(ax, row, **kwargs):
+    v_kite = np.array(list(row[['vx', 'vy', 'vz']]))
+    r_es = rotation_matrix_earth_sphere(row['kite_azimuth'], row['kite_elevation'], 0)
+
+    vec_sphere = r_es.T.dot(v_kite)
+    vec_proj = np.array([vec_sphere[1], -vec_sphere[0]])
+    plot_vector_2d([row['kite_azimuth']*180./np.pi, row['kite_elevation']*180./np.pi], vec_proj, ax, 1, **kwargs)
 
 
 def calc_kite_kite_front_wrt_projected_velocity(r_kite, v_kite, rm_earth2body):
@@ -31,6 +61,7 @@ def plot_velocity_and_respective_kite_attitude(flight_data):
 
 
 def animate_kite_attitude(flight_data, vwx=10, animate=True):
+    from turning_center import mark_points
     ax = plt.figure().gca()
     if animate:
         for i, (idx, row) in enumerate(flight_data.iterrows()):
@@ -45,48 +76,22 @@ def animate_kite_attitude(flight_data, vwx=10, animate=True):
             idx2i = flight_data.index[:i+1]
             ax.plot(flight_data.loc[idx2i, 'kite_azimuth']*180./np.pi, flight_data.loc[idx2i, 'kite_elevation']*180./np.pi)
 
-            def plot_ex(row, **kwargs):
-                r_es = rotation_matrix_earth_sphere(row['kite_azimuth'], row['kite_elevation'], 0)
-                rm_earth2body = rotation_matrix_earth2body(row['roll'], row['pitch'], row['yaw'])
-                exb_earth = rm_earth2body.T[:, 0]
-
-                vec_sphere = r_es.T.dot(exb_earth)
-                vec_proj = np.array([vec_sphere[1], -vec_sphere[0]])
-                plot_vector_2d([row['kite_azimuth']*180./np.pi, row['kite_elevation']*180./np.pi], vec_proj, ax, 1e1, **kwargs)
-
-            def plot_apparent_wind_velocity(row, **kwargs):
-                v_kite = np.array(list(row[['vx', 'vy', 'vz']]))
-                v_app = v_kite - np.array([vwx, 0, 0])
-                r_es = rotation_matrix_earth_sphere(row['kite_azimuth'], row['kite_elevation'], 0)
-
-                vec_sphere = r_es.T.dot(v_app)
-                vec_proj = np.array([vec_sphere[1], -vec_sphere[0]])
-                plot_vector_2d([row['kite_azimuth']*180./np.pi, row['kite_elevation']*180./np.pi], vec_proj, ax, 1, **kwargs)
-
-            def plot_kite_velocity(row, **kwargs):
-                v_kite = np.array(list(row[['vx', 'vy', 'vz']]))
-                r_es = rotation_matrix_earth_sphere(row['kite_azimuth'], row['kite_elevation'], 0)
-
-                vec_sphere = r_es.T.dot(v_kite)
-                vec_proj = np.array([vec_sphere[1], -vec_sphere[0]])
-                plot_vector_2d([row['kite_azimuth']*180./np.pi, row['kite_elevation']*180./np.pi], vec_proj, ax, 1, **kwargs)
-
             if i < flight_data.shape[0]-1:
-                plot_ex(row)
-                plot_apparent_wind_velocity(row)
+                plot_ex(ax, row)
+                plot_apparent_wind_velocity(ax, row, vwx)
 
             for j in [mp for mp in mark_points if mp < i]:
                 rowj = flight_data.iloc[j]
-                plot_ex(rowj, color='grey', linewidth=.5)
-                plot_apparent_wind_velocity(rowj, color='cyan', linewidth=.5)
-                plot_kite_velocity(rowj, color='blue', linewidth=.5)
+                plot_ex(ax, rowj, color='grey', linewidth=.5)
+                plot_apparent_wind_velocity(ax, rowj, vwx, color='cyan', linewidth=.5)
+                plot_kite_velocity(ax, rowj, color='blue', linewidth=.5)
 
             plt.pause(0.001)
 
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    from utils import read_and_transform_flight_data, rotation_matrix_earth_sphere, plot_vector_2d, rotation_matrix_earth2body
+    from utils import read_and_transform_flight_data
 
     flight_data = read_and_transform_flight_data()
     plot_velocity_and_respective_kite_attitude(flight_data)
