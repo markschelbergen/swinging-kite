@@ -444,7 +444,7 @@ def derive_tether_model_kcu_williams(n_tether_elements, explicit=True, vwx=0, im
             else:
                 fi = fa_kite.T
         elif kcu_element:
-            fi = d_s[i, :] + d_kcu
+            fi = d_s[i, :]/2 + d_kcu
         else:
             fi = d_s[i, :]
         f.append(fi)

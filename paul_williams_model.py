@@ -1,11 +1,14 @@
 import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 import numpy as np
-from utils import unravel_euler_angles, plot_flight_sections, rotation_matrix_earth2body
+import pickle
+
+from utils import unravel_euler_angles, plot_flight_sections, rotation_matrix_earth2body, \
+    read_and_transform_flight_data, add_panel_labels
 from system_properties import *
 from tether_model_and_verification import derive_tether_model_kcu_williams
 from attitude_check import calc_kite_kite_front_wrt_projected_velocity
-from turning_center import mark_points
+from turning_center import mark_points, determine_rigid_body_rotation
 
 
 def plot_vector(p0, v, ax, scale_vector=.03, color='g', label=None):
@@ -65,11 +68,28 @@ def shoot(x, set_parameter, n_tether_elements, r_kite, omega, vwx, separate_kcu_
         # TODO: check whether to use vajn
         vajn = vaj - vajp  # Perpendicular to tether element
 
-        if separate_kcu_mass and last_element:
-            dj = 0  # TODO: add bridle drag
+        vaj_sq = np.linalg.norm(vaj)*vaj
+        # vaj_sq = np.linalg.norm(vajn)*vajn
+        tether_drag_basis = rho*l_unstrained*d_t*cd_t*vaj_sq
+
+        if not separate_kcu_mass:
+            if n_tether_elements == 1:
+                dj = -.125*tether_drag_basis
+            elif last_element:
+                dj = -.25*tether_drag_basis  # TODO: add bridle drag
+            else:
+                dj = -.5*tether_drag_basis
         else:
-            # dj = -.5*rho*l_unstrained*d_t*cd_t*np.linalg.norm(vajn)*vajn  # Zanon does not take perpendicular component.
-            dj = -.5*rho*l_unstrained*d_t*cd_t*np.linalg.norm(vaj)*vaj
+            if last_element:
+                dj = 0  # TODO: add bridle drag
+            elif n_tether_elements == 1:
+                dj = -.125*tether_drag_basis
+                dj += -.5*rho*1.6*1.*vaj_sq  # Adding kcu drag
+            elif kcu_element:
+                dj = -.25*tether_drag_basis
+                dj += -.5*rho*1.6*1.*vaj_sq  # Adding kcu drag
+            else:
+                dj = -.5*tether_drag_basis
 
         if not separate_kcu_mass:
             if last_element:
@@ -81,8 +101,6 @@ def shoot(x, set_parameter, n_tether_elements, r_kite, omega, vwx, separate_kcu_
                 point_mass = m_kite
             elif kcu_element:
                 point_mass = m_s/2 + m_kcu
-                # dj += -.5*rho*1.6*1.*np.linalg.norm(vajn)*vajn  # Adding kcu drag
-                dj += -.5*rho*1.6*1.*np.linalg.norm(vaj)*vaj  # Adding kcu drag
             else:
                 point_mass = m_s
 
@@ -167,32 +185,53 @@ def find_tether_length():
     plt.show()
 
 
-def find_tether_lengths(flight_data, shoot_args, ax):
+def find_tether_lengths(flight_data, shoot_args, plot=False):
+    from scipy.optimize import least_squares
     dyn = derive_tether_model_kcu_williams(shoot_args['n_tether_elements'], False, vwx=shoot_args['vwx'])
 
-    from scipy.optimize import least_squares
+    if plot:
+        # plt.figure(figsize=(3.6, 3.6))
+        fig, ax3d = plt.subplots(1, 2, figsize=(7.2, 3.6))
+        plt.subplots_adjust(top=1.0, bottom=0.03, left=0.025, right=0.98, hspace=0.2, wspace=0.55)
+        ax3d[0] = plt.subplot(121, projection='3d', proj_type='ortho')
+        ax3d[0].plot3D(flight_data.rx, flight_data.ry, flight_data.rz, color='k')
+        ax3d[0].set_xlim([0, 250])
+        ax3d[0].set_ylim([-125, 125])
+        ax3d[0].set_zlim([0, 250])
+        ax3d[0].set_xlabel(r'$x_{\rm w}$ [m]')
+        ax3d[0].set_ylabel(r'$y_{\rm w}$ [m]')
+        ax3d[0].set_zlabel(r'$z_{\rm w}$ [m]')
+        ax3d[0].set_box_aspect([1, 1, 1])  # As of matplotlib 3.3.0
+
+        ax3d[1].plot(flight_data.rx, flight_data.ry, color='k')
+        # ax3d[1].set_xlim([0, 260])
+        # ax3d[1].set_ylim([-130, 130])
+        ax3d[1].set_xlabel(r'$x_{\rm w}$ [m]')
+        ax3d[1].set_ylabel(r'$y_{\rm w}$ [m]')
+        ax3d[1].grid()
+        ax3d[1].set_aspect('equal')
+        add_panel_labels(ax3d, (.05, .35))
+
     tether_lengths = []
     strained_tether_lengths = []
-    ypr_bridle = np.empty((flight_data.shape[0], 3))
-    ypr_bridle_vk = np.empty((flight_data.shape[0], 3))
-    ypr_tether = np.empty((flight_data.shape[0], 3))
-    ypr_aero_force = np.empty((flight_data.shape[0], 3))
-    aero_force_body = np.empty((flight_data.shape[0], 3))
-    aero_force_bridle = np.empty((flight_data.shape[0], 3))
-    apparent_flow_direction = np.empty((flight_data.shape[0], 2))
-    kite_front_wrt_projected_velocity = np.empty(flight_data.shape[0])
-    ypr_body2bridle = np.empty((flight_data.shape[0], 3))
 
-    fig, ax_tau = plt.subplots(1, 2, sharey=True, figsize=(6.4, 3.6))
-    ax_tau[1].invert_xaxis()
-    wspace = .200
-    plt.subplots_adjust(top=0.805, bottom=0.13, left=0.11, right=0.97, wspace=wspace)
-    ax_tau[0].set_ylabel("Radial position [m]")
-    ax_tau[0].set_xlabel("Up-heading position [m]")
-    ax_tau[1].set_xlabel("Cross-heading position [m]")
-    ax_tau[0].set_xlim([-7.5, .5])
-    ax_tau[1].set_xlim([4, -4])
-    for a in ax_tau: a.grid()
+    n_rows = flight_data.shape[0]
+    ypr_bridle = np.empty((n_rows, 3))
+    ypr_bridle_vk = np.empty((n_rows, 3))
+    ypr_tether = np.empty((n_rows, 3))
+    ypr_aero_force = np.empty((n_rows, 3))
+    aero_force_body = np.empty((n_rows, 3))
+    aero_force_bridle = np.empty((n_rows, 3))
+    apparent_flow_direction = np.empty((n_rows, 2))
+    kite_front_wrt_projected_velocity = np.empty(n_rows)
+    ypr_body2bridle = np.empty((n_rows, 3))
+
+    n_elements = shoot_args['n_tether_elements']
+    if shoot_args['separate_kcu_mass']:
+        n_elements += 1
+
+    pos_tau = np.zeros((n_rows, n_elements+1, 3))
+    pos_tau_vk = np.zeros((n_rows, n_elements+1, 3))
 
     mp_counter = 0
     for i, (idx, row) in enumerate(flight_data.iterrows()):
@@ -213,11 +252,9 @@ def find_tether_lengths(flight_data, shoot_args, ax):
         ex_tau_vk = np.cross(ey_tau_vk, ez_tau_vk)
         dcm_e2tau_vk_i = np.vstack(([ex_tau_vk], [ey_tau_vk], [ez_tau_vk]))
 
-        pos_tau = np.zeros(pos_e.shape)
-        pos_tau_vk = np.zeros(pos_e.shape)
         for j in range(pos_e.shape[0]):
-            pos_tau[j, :] = dcm_tau2e_i.T.dot(pos_e[j, :])
-            pos_tau_vk[j, :] = dcm_e2tau_vk_i.dot(pos_e[j, :])
+            pos_tau[i, j, :] = dcm_tau2e_i.T.dot(pos_e[j, :])
+            pos_tau_vk[i, j, :] = dcm_e2tau_vk_i.dot(pos_e[j, :])
 
         dcm_tau2b = dcm_b2e_i.T.dot(dcm_tau2e_i)
         # Note that dcm_b2e_i and dcm_tau2e_i both use the apparent wind velocity to define the positive x-axis, as such
@@ -248,16 +285,13 @@ def find_tether_lengths(flight_data, shoot_args, ax):
         dcm_body2b = dcm_b2e_i.T.dot(dcm_earth2body.T)
         ypr_body2bridle[i, :] = unravel_euler_angles(dcm_body2b, '321')
 
-        if i in mark_points:
+        if plot and i in mark_points:
             clr = 'C{}'.format(mp_counter)
-            ax[0].plot3D(pos_e[:, 0], pos_e[:, 1], pos_e[:, 2], color=clr)  #, linewidth=.5, color='grey')
-            ax[1].plot(pos_e[:, 0], pos_e[:, 1], color=clr, label=mp_counter+1)
+            ax3d[0].plot3D(pos_e[:, 0], pos_e[:, 1], pos_e[:, 2], color=clr)  #, linewidth=.5, color='grey')
+            ax3d[1].plot(pos_e[:, 0], pos_e[:, 1], color=clr, label=mp_counter + 1)
             # Cross-heading is preferred opposed to cross-course as it shows a helix shape of the tether at the outside
             # of the turns, which one could interpret as caused by the centripetal acceleration, however it can be
             # to the drag.
-            if mp_counter < 5:
-                ax_tau[0].plot(pos_tau[:, 0], pos_tau[:, 2], color=clr, label='{}'.format(mp_counter+1))
-                ax_tau[1].plot(pos_tau[:, 1], pos_tau[:, 2], color=clr)
             mp_counter += 1
 
         verify = False
@@ -273,12 +307,17 @@ def find_tether_lengths(flight_data, shoot_args, ax):
             c, d = dyn['f_mat'](x, u)
             eps = np.array(c@b - d)
             assert np.amax(np.abs(eps)) < 1e-6
-    ax_tau[0].legend(title='Instance label', bbox_to_anchor=(.2, 1.05, 1.6+wspace, .5), loc="lower left", mode="expand",
-                    borderaxespad=0, ncol=5)
-    ax[1].legend(title='Instance label', bbox_to_anchor=(.0, 1.05, 1., .5), loc="lower left", mode="expand",
-                    borderaxespad=0, ncol=5)
+    if plot:
+        ax3d[1].legend(title='Instance label', bbox_to_anchor=(.0, 1.05, 1., .5), loc="lower left", mode="expand",
+                       borderaxespad=0, ncol=5)
 
-    return tether_lengths, strained_tether_lengths, ypr_bridle, ypr_bridle_vk, ypr_tether, ypr_aero_force, aero_force_body, aero_force_bridle, apparent_flow_direction, kite_front_wrt_projected_velocity, ypr_body2bridle
+    if shoot_args['separate_kcu_mass']:
+        tether_lengths = np.array(tether_lengths) + l_bridle
+        strained_tether_lengths = np.array(strained_tether_lengths) + l_bridle
+
+    return tether_lengths, strained_tether_lengths, ypr_bridle, ypr_bridle_vk, ypr_tether, ypr_aero_force,\
+           aero_force_body, aero_force_bridle, apparent_flow_direction, kite_front_wrt_projected_velocity, \
+           ypr_body2bridle, pos_tau
 
 
 def find_tether_forces(flight_data, tether_lengths, shoot_args):
@@ -310,50 +349,54 @@ def find_tether_forces(flight_data, tether_lengths, shoot_args):
     return tether_forces, ypr_tether_end, ypr_tether_second_last, ypr_aero_force
 
 
-def find_and_plot_tether_lengths(generate_sim_input=False):  #, separate_kcu_mass=True, elastic_elements=False):
-    shoot_args = {
-        'n_tether_elements': 30,
-        'vwx': 10,
-        'separate_kcu_mass': True,
-        'elastic_elements': True,
-    }
-
-    from utils import read_and_transform_flight_data
-    from turning_center import find_turns_for_rolling_window, determine_rigid_body_rotation
-    flight_data = read_and_transform_flight_data()  # Read flight data.
-    find_turns_for_rolling_window(flight_data)
-    determine_rigid_body_rotation(flight_data)
-
-    # plt.figure(figsize=(3.6, 3.6))
-    fig, ax3d = plt.subplots(1, 2, figsize=(7.2, 3.6))
-    plt.subplots_adjust(top=1.0, bottom=0.03, left=0.0, right=0.98, hspace=0.2, wspace=0.4)
-    ax3d[0] = plt.subplot(121, projection='3d', proj_type='ortho')
-    ax3d[0].plot3D(flight_data.rx, flight_data.ry, flight_data.rz, color='k')
-    ax3d[0].set_xlim([0, 250])
-    ax3d[0].set_ylim([-125, 125])
-    ax3d[0].set_zlim([0, 250])
-    ax3d[0].set_xlabel(r'$x_{\rm w}$ [m]')
-    ax3d[0].set_ylabel(r'$y_{\rm w}$ [m]')
-    ax3d[0].set_zlabel(r'$z_{\rm w}$ [m]')
-    ax3d[0].set_box_aspect([1, 1, 1])  # As of matplotlib 3.3.0
-
-    ax3d[1].plot(flight_data.rx, flight_data.ry, color='k')
-    # ax3d[1].set_xlim([0, 260])
-    # ax3d[1].set_ylim([-130, 130])
-    ax3d[1].set_xlabel(r'$x_{\rm w}$ [m]')
-    ax3d[1].set_ylabel(r'$y_{\rm w}$ [m]')
-    ax3d[1].grid()
-    ax3d[1].set_aspect('equal')
-
-    tether_lengths, strained_tether_lengths, ypr_bridle, ypr_bridle_vk, ypr_tether, ypr_aero_force, \
-    aero_force_body, aero_force_bridle, flow_angles, kite_front_wrt_projected_velocity, ypr_body2bridle = find_tether_lengths(flight_data, shoot_args, ax3d)
-    if shoot_args['separate_kcu_mass']:
-        tether_lengths_incl_bridle = np.array(tether_lengths) + l_bridle
-        strained_tether_lengths_incl_bridle = np.array(strained_tether_lengths) + l_bridle
+def plot_tether_element_pitch(flight_data, ypr_aero_force, ypr_bridle, ypr_tether, separate_kcu_mass, ax):
+    ax.plot(flight_data.time, ypr_aero_force[:, 1]*180./np.pi, label='Aero force')
+    if separate_kcu_mass:
+        ax.plot(flight_data.time, ypr_bridle[:, 1]*180./np.pi, label='Bridle')
+        ax.plot(flight_data.time, ypr_tether[:, 1]*180./np.pi, label='Tether')
     else:
-        tether_lengths_incl_bridle = tether_lengths
-        strained_tether_lengths_incl_bridle = strained_tether_lengths
+        ax.plot(flight_data.time, ypr_bridle[:, 1]*180./np.pi, label='Tether')
+    ax.grid()
+    ax.plot(flight_data.time, flight_data.pitch0_tau * 180. / np.pi, label='Sensor 0')
+    ax.plot(flight_data.time, flight_data.pitch1_tau * 180. / np.pi, label='Sensor 1')
+    ax.set_ylim([0, None])
+    plot_flight_sections(ax, flight_data)
 
+
+def plot_tether_element_attitudes(flight_data, ypr_aero_force, ypr_bridle, ypr_tether, separate_kcu_mass):
+    fig, ax_ypr = plt.subplots(2, 1, sharex=True)
+    plt.suptitle("3-2-1 Euler angles between tangential\nand local ref. frames")
+    ax_ypr[0].plot(flight_data.time, ypr_aero_force[:, 1]*180./np.pi, label='Aero force')
+    if separate_kcu_mass:
+        ax_ypr[0].plot(flight_data.time, ypr_bridle[:, 1]*180./np.pi, label='Bridle')
+        ax_ypr[0].plot(flight_data.time, ypr_tether[:, 1]*180./np.pi, label='Tether')
+    else:
+        ax_ypr[0].plot(flight_data.time, ypr_bridle[:, 1]*180./np.pi, label='Tether')
+    ax_ypr[0].set_ylabel("Pitch [deg]")
+
+    ax_ypr[1].plot(flight_data.time, ypr_aero_force[:, 2]*180./np.pi, label='Aero force')
+    if separate_kcu_mass:
+        clr = ax_ypr[1].plot(flight_data.time, ypr_bridle[:, 2]*180./np.pi, label='Bridle')[0].get_color()
+        # ax_ypr[1].plot(flight_data.time, ypr_bridle_vk[:, 2]*180./np.pi, '--', label='sim bridle vk', color=clr)
+        ax_ypr[1].plot(flight_data.time, ypr_tether[:, 2]*180./np.pi, label='Tether')
+    else:
+        ax_ypr[1].plot(flight_data.time, ypr_bridle[:, 2]*180./np.pi, label='Tether')
+    ax_ypr[1].set_ylabel("Roll [deg]")
+    ax_ypr[1].set_xlabel("Time [s]")
+
+    for a in ax_ypr: a.grid()
+    ax_ypr[0].plot(flight_data.time, flight_data.pitch0_tau * 180. / np.pi, label='Sensor 0')
+    ax_ypr[0].plot(flight_data.time, flight_data.pitch1_tau * 180. / np.pi, label='Sensor 1')
+    ax_ypr[1].plot(flight_data.time, flight_data.roll0_tau * 180. / np.pi, label='Sensor 0')
+    ax_ypr[1].plot(flight_data.time, flight_data.roll1_tau * 180. / np.pi, label='Sensor 1')
+    ax_ypr[1].legend()
+    ax_ypr[0].set_ylim([0, None])
+
+    for a in ax_ypr: plot_flight_sections(a, flight_data)
+
+
+def plot_aero_force_components(flight_data, aero_force_body, aero_force_bridle, flow_angles, ypr_body2bridle,
+                               kite_front_wrt_projected_velocity):
     fig, ax = plt.subplots(3, 2)
     ax[0, 0].plot(flight_data.time, aero_force_body[:, 0], label='body')
     ax[0, 0].plot(flight_data.time, aero_force_bridle[:, 0], label='bridle')
@@ -379,77 +422,164 @@ def find_and_plot_tether_lengths(generate_sim_input=False):  #, separate_kcu_mas
     ax[2, 1].plot(flight_data.time, -kite_front_wrt_projected_velocity*180/np.pi)
     ax[2, 1].set_ylabel(r"$\beta to v_{kite}$ [deg]")
 
-    fig, ax_ypr = plt.subplots(2, 1, sharex=True)
-    plt.suptitle("3-2-1 Euler angles between tangential\nand local ref. frames")
-    if shoot_args['separate_kcu_mass']:
-        ax_ypr[0].plot(flight_data.time, ypr_bridle[:, 1]*180./np.pi, label='sim bridle')
-        ax_ypr[0].plot(flight_data.time, ypr_tether[:, 1]*180./np.pi, label='sim tether')
-    else:
-        ax_ypr[0].plot(flight_data.time, ypr_bridle[:, 1]*180./np.pi, label='sim tether')
-    ax_ypr[0].plot(flight_data.time, ypr_aero_force[:, 1]*180./np.pi, label='sim aero force')
-    ax_ypr[0].set_ylabel("Pitch [deg]")
-    if shoot_args['separate_kcu_mass']:
-        clr = ax_ypr[1].plot(flight_data.time, ypr_bridle[:, 2]*180./np.pi, label='sim bridle')[0].get_color()
-        ax_ypr[1].plot(flight_data.time, ypr_bridle_vk[:, 2]*180./np.pi, '--', label='sim bridle vk', color=clr)
-        ax_ypr[1].plot(flight_data.time, ypr_tether[:, 2]*180./np.pi, label='sim tether')
-    else:
-        ax_ypr[1].plot(flight_data.time, ypr_bridle[:, 2]*180./np.pi, label='sim tether')
-    ax_ypr[1].plot(flight_data.time, ypr_aero_force[:, 2]*180./np.pi, label='sim aero force')
-    ax_ypr[1].set_ylabel("Roll [deg]")
-    ax_ypr[1].set_xlabel("Time [s]")
 
-    for a in ax_ypr: a.grid()
-    ax_ypr[0].plot(flight_data.time, flight_data.pitch_tau * 180. / np.pi, label='mea')
-    ax_ypr[1].plot(flight_data.time, flight_data.roll_tau * 180. / np.pi, label='mea')
-    ax_ypr[1].legend()
-    ax_ypr[0].set_ylim([0, None])
-    for a in ax_ypr: plot_flight_sections(a, flight_data)
+def plot_tether_states(flight_data, strained_tether_lengths, tether_lengths,
+                       fitted_tether_length_and_speed=None, fitted_tether_acceleration=None):
+    # Tether lengths include bridle length
 
-    fig, ax = plt.subplots(4, 1, sharex=True)
-    ax[0].plot(flight_data.time, np.array(strained_tether_lengths_incl_bridle)-flight_data.kite_distance, label='sag')
+    fig, ax2 = plt.subplots(1, 2, sharex=True, figsize=[6.4, 2.4])
+    plt.subplots_adjust(top=0.97, bottom=0.2, left=0.14, right=0.99, wspace=0.4)
+    ax2[0].plot(flight_data.time[:-1], np.diff(strained_tether_lengths)/.1, linewidth=.5, label='T-I')
+    ax2[0].plot(flight_data.time, flight_data.ground_tether_reelout_speed, label='Measured')
+    ax2[0].set_ylabel(r'Tether speed [m s$^{-1}$]')
+    ax2[0].set_ylim([0, 2.5])
+    ax2[1].set_ylabel(r'Tether acceleration [m s$^{-2}$]')
+    ax2[0].set_xlabel('Time [s]')
+    ax2[1].set_xlabel('Time [s]')
+    for a in ax2: a.grid()
+    for a in ax2: a.set_xlim([0, flight_data.iloc[-1]['time']])
+
+    fig, ax = plt.subplots(3, 2, sharex=True)
+    ax[0, 0].plot(flight_data.time, np.array(strained_tether_lengths)-flight_data.kite_distance, label='sag')
     # coef = np.polyfit(flight_data.time, flight_data.kite_distance, 1)
     # poly1d_fn = np.poly1d(coef)
     # delta_linear_fun = flight_data.kite_distance - poly1d_fn(flight_data.time)
     # ax[0].plot(flight_data.time, delta_linear_fun, label='delta r wrt linear')
-    ax[0].legend()
-    # ax[0].plot(flight_data.time, np.array(tether_lengths_incl_bridle)-flight_data.kite_distance, ':')
-    ax[0].fill_between(flight_data.time, 0, 1, where=flight_data['flag_turn'], facecolor='lightsteelblue', alpha=0.5)
-    ax[0].set_ylabel('Sag length [m]')
-    ax[1].plot(flight_data.time, strained_tether_lengths_incl_bridle, label='strained')
-    ax[1].plot(flight_data.time, tether_lengths_incl_bridle, ':', label='unstrained')
-    ax[1].plot(flight_data.time, flight_data.kite_distance, '-.', label='radial position')
-    # bias = np.mean(tether_lengths_incl_bridle - flight_data.ground_tether_length)
+    ax[0, 0].legend()
+    # ax[0].plot(flight_data.time, np.array(tether_lengths)-flight_data.kite_distance, ':')
+    ax[0, 0].fill_between(flight_data.time, 0, 1, where=flight_data['flag_turn'], facecolor='lightsteelblue', alpha=0.5)
+    ax[0, 0].set_ylabel('Sag length [m]')
+
+    ax[1, 0].plot(flight_data.time, flight_data.ground_tether_force*1e-3)
+    ax[1, 0].fill_between(flight_data.time, 0, 5, where=flight_data['flag_turn'], facecolor='lightsteelblue', alpha=0.5)
+    ax[1, 0].set_ylabel('Tether force [kN]')
+
+    ax[2, 0].plot(flight_data.time, strained_tether_lengths, label='strained')
+    ax[2, 0].plot(flight_data.time, tether_lengths, ':', label='unstrained')
+    ax[2, 0].plot(flight_data.time, flight_data.kite_distance, '-.', label='radial position')
+    # bias = np.mean(tether_lengths - flight_data.ground_tether_length)
     # print("Tether length bias", bias)
     # ax[1].plot(flight_data.time, flight_data.ground_tether_length + bias, '-.', label='mea')
-    ax[1].legend()
-    ax[1].set_ylabel('Tether length [m]')
-    ax[2].plot(flight_data.time[:-1], np.diff(tether_lengths)/.1)
-    ax[2].plot(flight_data.time, flight_data.ground_tether_reelout_speed, ':')
-    ax[2].set_ylabel('Tether speed [m/s]')
+    ax[2, 0].legend()
+    ax[2, 0].set_ylabel('Tether length [m]')
 
-    ax[3].set_ylabel('Tether acceleration [m/s**2]')
+    ax[0, 1].plot(flight_data.time[:-1], np.diff(strained_tether_lengths)/.1, linewidth=.5)
+    ax[0, 1].plot(flight_data.time, flight_data.ground_tether_reelout_speed, ':')
+    ax[0, 1].set_ylabel('Tether speed [m/s]')
+    ax[0, 1].set_ylim([0, 2.5])
 
-    if not shoot_args['elastic_elements']:
-        tether_length_and_speed, tether_acceleration = match_tether_length_and_speed(tether_lengths_incl_bridle, flight_data.ground_tether_reelout_speed, flight_data.kite_distance)
-        print("Start tether speed", tether_length_and_speed[0, 1])
-        ax[0].plot(flight_data.time, tether_length_and_speed[:, 0]-flight_data.kite_distance, '--')
-        ax[1].plot(flight_data.time, tether_length_and_speed[:, 0], '--')
-        ax[2].plot(flight_data.time, tether_length_and_speed[:, 1], '--')
-        ax[3].plot(flight_data.time[:-1], tether_acceleration)
+    ax[1, 1].set_ylabel('Tether acceleration [m/s**2]')
 
-        if generate_sim_input:
-            if shoot_args['separate_kcu_mass']:
-                tether_length_and_speed[:, 0] = tether_length_and_speed[:, 0]-l_bridle
-            opt_controls = np.hstack((tether_acceleration, [np.nan])).reshape((-1, 1))
-            save_array = np.hstack((tether_length_and_speed, opt_controls))
-            np.save('tether_states.npy', save_array)
-            if shoot_args['separate_kcu_mass']:
-                np.save('ypr_bridle_rigid_body_rotation.npy', ypr_bridle)
+    if fitted_tether_length_and_speed is not None:
+        print("Start tether speed", fitted_tether_length_and_speed[0, 1])
+        ax[0, 0].plot(flight_data.time, fitted_tether_length_and_speed[:, 0]-flight_data.kite_distance, '--')
+        ax[2, 0].plot(flight_data.time, fitted_tether_length_and_speed[:, 0], '--')
+        ax[0, 1].plot(flight_data.time, fitted_tether_length_and_speed[:, 1], '--')
+        ax2[0].plot(flight_data.time, fitted_tether_length_and_speed[:, 1], label='Fit')
+        ax[1, 1].plot(flight_data.time[:-1], fitted_tether_acceleration)
+        ax2[1].plot(flight_data.time[:-1], fitted_tether_acceleration)
+    ax2[0].legend(ncol=2)
+    add_panel_labels(ax2, offset_x=.36)
 
-        # tether_forces, ypr_tether_end2, ypr_tether_second_last2, ypr_aero_force2 = find_tether_forces(flight_data, tether_length_and_speed[:, 0], shoot_args)
-        # ax_ypr[1].plot(flight_data.time, ypr_tether_end2[:, 2]*180./np.pi, 'k', label='sim bridle2')
 
-    plt.show()
+def plot_offaxial_tether_displacement(pos_tau, ax=None, ls='-', plot_rows=[0, 1]):
+    if ax is None:
+        set_legend = True
+
+        fig, ax = plt.subplots(2, 2, sharey=True, figsize=(6.4, 5.2))
+        ax[0, 1].invert_xaxis()
+        ax[1, 1].invert_xaxis()
+        wspace = .200
+        plt.subplots_adjust(top=0.885, bottom=0.105, left=0.15, right=0.99, hspace=0.07, wspace=wspace)
+        ax[0, 0].set_ylabel("Radial position [m]")
+        ax[1, 0].set_ylabel("Radial position [m]")
+        ax[1, 0].set_xlabel("Up-heading position [m]")
+        ax[1, 1].set_xlabel("Cross-heading position [m]")
+        ax[1, 0].set_xlim([-8.5, 1.5])
+        ax[1, 1].set_xlim([5, -5])
+        ax[1, 0].get_shared_x_axes().join(*ax[:, 0])
+        ax[1, 1].get_shared_x_axes().join(*ax[:, 1])
+        for a in ax.reshape(-1): a.grid()
+        ax[0, 0].tick_params(labelbottom=False)
+        ax[0, 1].tick_params(labelbottom=False)
+    else:
+        set_legend = False
+
+    for ir in plot_rows:
+        for mp_counter, i in enumerate(mark_points[:5]):
+            # if mp_counter in [0, 2, 3]:
+            clr = 'C{}'.format(mp_counter)
+            ax[ir, 0].plot(pos_tau[i, :, 0], pos_tau[i, :, 2], ls, color=clr, label='{}'.format(mp_counter+1))
+            ax[ir, 1].plot(pos_tau[i, :, 1], pos_tau[i, :, 2], ls, color=clr)
+
+    if set_legend:
+        ax[0, 0].legend(title='Instance label', bbox_to_anchor=(.2, 1.05, 1.6+wspace, .5), loc="lower left", mode="expand",
+                     borderaxespad=0, ncol=5)
+    return ax
+
+
+def find_and_plot_tether_lengths(n_tether_elements=30, generate_sim_input=False, i_cycle=None, ax=None):
+    shoot_args = {
+        'n_tether_elements': n_tether_elements,
+        'vwx': 10,
+        'separate_kcu_mass': True,
+        'elastic_elements': False,
+    }
+
+    flight_data = read_and_transform_flight_data(True, i_cycle)  # Read flight data.
+    #TODO: remove lower?
+    flight_data.loc[flight_data['phase'] >= 4, 'azimuth_turn_center'] = np.nan
+    flight_data.loc[flight_data['phase'] >= 4, 'elevation_turn_center'] = np.nan
+    flight_data.loc[flight_data['phase'] >= 4, 'flag_turn'] = False
+    determine_rigid_body_rotation(flight_data)
+
+    tether_lengths, strained_tether_lengths, ypr_bridle, ypr_bridle_vk, ypr_tether, ypr_aero_force, \
+    aero_force_body, aero_force_bridle, flow_angles, kite_front_wrt_projected_velocity, ypr_body2bridle, pos_tau = \
+        find_tether_lengths(flight_data, shoot_args, plot=False)
+
+    if ax is None:
+        plot_offaxial_tether_displacement(pos_tau)
+        plot_aero_force_components(flight_data, aero_force_body, aero_force_bridle, flow_angles, ypr_body2bridle,
+                                   kite_front_wrt_projected_velocity)
+        plot_tether_element_attitudes(flight_data, ypr_aero_force, ypr_bridle, ypr_tether, shoot_args['separate_kcu_mass'])
+    else:
+        plot_tether_element_pitch(flight_data, ypr_aero_force, ypr_bridle, ypr_tether, shoot_args['separate_kcu_mass'], ax)
+
+    if not shoot_args['elastic_elements'] and generate_sim_input:
+        # tether_lengths[50:62] = np.nan
+        # tether_lengths[156:167] = np.nan
+        # strained_tether_lengths[50:62] = np.nan
+        # strained_tether_lengths[156:167] = np.nan
+        # import pandas as pd
+        # tether_lengths = pd.Series(tether_lengths)
+        # tether_lengths.interpolate(inplace=True)
+        # strained_tether_lengths = pd.Series(strained_tether_lengths)
+        # strained_tether_lengths.interpolate(inplace=True)
+
+        fitted_tether_length_and_speed, fitted_tether_acceleration = \
+            match_tether_length_and_speed(tether_lengths, flight_data.ground_tether_reelout_speed,
+                                          flight_data.kite_distance)
+
+        plot_tether_states(flight_data, strained_tether_lengths, tether_lengths,
+                           fitted_tether_length_and_speed, fitted_tether_acceleration)
+
+        if shoot_args['separate_kcu_mass']:
+            fitted_tether_length_and_speed[:, 0] = fitted_tether_length_and_speed[:, 0]-l_bridle
+        opt_controls = np.hstack((fitted_tether_acceleration, [np.nan])).reshape((-1, 1))
+        save_array = np.hstack((fitted_tether_length_and_speed, opt_controls))
+        np.save('tether_states.npy', save_array)
+        if shoot_args['separate_kcu_mass']:
+            np.save('ypr_bridle_rigid_body_rotation.npy', ypr_bridle)
+
+    if shoot_args['separate_kcu_mass'] and not shoot_args['elastic_elements']:
+        res = {
+            'strained_tether_lengths': strained_tether_lengths,
+            'pitch_bridle': ypr_bridle[:, 1],
+            'roll_bridle': ypr_bridle[:, 2],
+            'offaxial_tether_shape': pos_tau,
+        }
+        with open("time_invariant_results{}.pickle".format(shoot_args['n_tether_elements']), 'wb') as f:
+            pickle.dump(res, f)
 
 
 def match_tether_length_and_speed(tether_lengths, tether_speeds, radius):
@@ -483,12 +613,14 @@ def match_tether_length_and_speed(tether_lengths, tether_speeds, radius):
         res = intg(x0=states[k, :], p=controls[k])
         opti.subject_to(states[k+1, :].T == res["xf"])
 
-    # # Initial guesses
-    # opti.set_initial(states, df['ground_tether_reelout_speed'].values)
-    # opti.set_initial(controls, np.diff(df['ground_tether_reelout_speed'].values)/.1)
+    obj = ca.sumsqr(states[:, 0] - np.array(tether_lengths))
 
-    opti.minimize(ca.sumsqr(states[:, 0] - np.array(tether_lengths)) + ca.sumsqr(states[:, 1] - np.array(tether_speeds)))
-    opti.subject_to(opti.bounded(-.1, controls[1:]-controls[:-1], .1))
+    # # Lower objective finds
+    # obj = ca.sumsqr(states[:, 1] - np.array(tether_speeds))
+    # obj = obj + ca.sumsqr(states[n_intervals, 0] - tether_lengths[n_intervals])
+
+    opti.minimize(obj)
+    opti.subject_to(opti.bounded(-.3, controls[1:]-controls[:-1], .3))
     opti.subject_to(states[:, 0] - radius > .01)
 
     # solve optimization problem
@@ -499,5 +631,70 @@ def match_tether_length_and_speed(tether_lengths, tether_speeds, radius):
     return sol.value(states), sol.value(controls)
 
 
+def combine_results_of_different_analyses():
+    flight_data = read_and_transform_flight_data()
+
+    fig, ax_ypr = plt.subplots(2, 1, sharex=True, figsize=[6.4, 4])
+    plt.subplots_adjust(top=0.85, bottom=0.135, left=0.16, right=0.99,)
+    # plt.suptitle("3-2-1 Euler angles between tangential\nand bridle ref. frames")
+    ax_ypr[0].set_ylabel("Pitch [$^\circ$]")
+    ax_ypr[1].set_ylabel("Roll [$^\circ$]")
+    ax_ypr[1].set_xlabel("Time [s]")
+
+    fig, ax_tether_length = plt.subplots(2, 1, sharex=True)
+
+    n_tether_elements = [30, 1]
+    linestyles = ['-', '--']
+    ax_tether_shape = None
+    for n_te, ls in zip(n_tether_elements, linestyles):
+        with open("time_invariant_results{}.pickle".format(n_te), 'rb') as f:
+            res = pickle.load(f)
+        if n_te == 1:
+            plot_rows = [0]
+        else:
+            plot_rows = [0, 1]
+        ax_tether_shape = plot_offaxial_tether_displacement(res['offaxial_tether_shape'], ax_tether_shape, ls=ls,
+                                                            plot_rows=plot_rows)
+
+        ax_ypr[0].plot(flight_data.time, res['pitch_bridle']*180./np.pi, label=r'T-I N='+str(n_te))
+        ax_ypr[1].plot(flight_data.time, res['roll_bridle']*180./np.pi, label=r'T-I N='+str(n_te))
+
+        ax_tether_length[0].plot(flight_data.time, res['strained_tether_lengths'], label=r'T-I N='+str(n_te))
+        ax_tether_length[1].plot(flight_data.time, res['strained_tether_lengths']-flight_data.kite_distance)
+    ax_tether_length[0].plot(flight_data.time, flight_data.kite_distance)
+    ax_tether_length[0].legend()
+    add_panel_labels(ax_tether_length)
+
+    with open("dynamic_results30.pickle", 'rb') as f:
+        res = pickle.load(f)
+    ax_tether_shape = plot_offaxial_tether_displacement(res['offaxial_tether_shape'], ax_tether_shape, ls='--', plot_rows=[1])
+    ax_ypr[0].plot(flight_data.time, res['pitch_bridle']*180./np.pi, label=r'Dyn N=30')
+    ax_ypr[1].plot(flight_data.time, res['roll_bridle']*180./np.pi, label=r'Dyn N=30')
+
+    for a in ax_ypr: a.grid()
+    ax_ypr[0].plot(flight_data.time, flight_data.pitch0_tau * 180. / np.pi, label='Sensor 0')
+    ax_ypr[0].plot(flight_data.time, flight_data.pitch1_tau * 180. / np.pi, label='Sensor 1')
+    ax_ypr[1].plot(flight_data.time, flight_data.roll0_tau * 180. / np.pi, label='Sensor 0')
+    ax_ypr[1].plot(flight_data.time, flight_data.roll1_tau * 180. / np.pi, label='Sensor 1')
+    ax_ypr[0].legend(bbox_to_anchor=(.15, 1.07, .7, .5), loc="lower left", mode="expand",
+                   borderaxespad=0, ncol=3)
+    ax_ypr[0].set_ylim([0, None])
+    for a in ax_ypr: plot_flight_sections(a, flight_data)
+    add_panel_labels(ax_ypr, .18)
+    ax_ypr[0].set_xlim([flight_data.iloc[0]['time'], flight_data.iloc[-1]['time']])
+
+    add_panel_labels(ax_tether_shape, (.38, .15))
+
+
 if __name__ == "__main__":
-    find_and_plot_tether_lengths()
+    fig, ax = plt.subplots(5, 4)
+    for ic, a in zip(list(range(10, 20)) + list(range(55, 65)), ax.reshape(-1)):
+        try:
+            find_and_plot_tether_lengths(1, i_cycle=ic, ax=a)
+        except:
+            pass
+    # find_and_plot_tether_lengths(1)
+    # find_and_plot_tether_lengths(30)
+    # find_and_plot_tether_lengths(100)
+    # combine_results_of_different_analyses()
+    plt.show()

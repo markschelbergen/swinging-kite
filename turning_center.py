@@ -151,6 +151,12 @@ def plot_estimated_turn_center(flight_data, animate=False, vwx=10):
         for j, im in enumerate(mark_points):
             row = flight_data.iloc[im]
 
+            if j == 0:
+                lbl = 'Heading'
+            else:
+                lbl = None
+            plot_apparent_wind_velocity(ax, row, vwx, .3, color='g', linestyle=':', label=lbl)
+
             az_tc, el_tc = row['azimuth_turn_center']*180./np.pi, row['elevation_turn_center']*180./np.pi
             if np.isnan(az_tc):
                 marker = 's'
@@ -161,12 +167,6 @@ def plot_estimated_turn_center(flight_data, animate=False, vwx=10):
             az, el = row['kite_azimuth']*180./np.pi, row['kite_elevation']*180./np.pi
             ax.plot(az, el, marker, mfc="white", alpha=1, ms=12, mec='C{}'.format(j))
             ax.plot(az, el, marker='${}$'.format(j+1), alpha=1, ms=7, mec='C{}'.format(j))
-
-            if j == 0:
-                lbl = 'Heading'
-            else:
-                lbl = None
-            plot_apparent_wind_velocity(ax, row, vwx, .3, color='g', linestyle=':', label=lbl)
         ax.legend(loc=9)
         ax.grid()
 
@@ -293,7 +293,6 @@ if __name__ == "__main__":
     # plt.grid()
     # plt.show()
     # exit()
-    find_turns_for_rolling_window(flight_data)
     determine_rigid_body_rotation(flight_data)
     plot_estimated_turn_center(flight_data)
     visualize_estimated_rotation_vector(flight_data)

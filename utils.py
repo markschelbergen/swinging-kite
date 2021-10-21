@@ -119,10 +119,6 @@ def plot_flight_sections(ax, df):
     y0, y1 = ax.get_ylim()
     ax.set_ylim([y0, y1])
     ax.fill_between(df.time, y0, y1, where=df['flag_turn'], facecolor='lightsteelblue', alpha=0.5) # lightgrey
-    # for i_ph in range(6):
-    #     mask = df['phase'] == i_ph
-    #     if np.sum(mask) > 0:
-    #         ax.axvline(df.loc[df.index[mask][0], 'time'], linestyle='--', color='grey')
 
 
 def rotation_matrix_earth2body(roll, pitch, yaw, sequence='321'):
@@ -157,8 +153,8 @@ def rotation_matrix_earth2body(roll, pitch, yaw, sequence='321'):
     return r
 
 
-def calc_rpy_wrt_tangential_plane(df):
-    pitch_spsi2b, yaw_spsi2b, roll_spsi2b = [], [], []
+def calc_rpy_wrt_tangential_plane(df, rpy_cols=['roll', 'pitch', 'yaw']):
+    roll_spsi2b, pitch_spsi2b, yaw_spsi2b = [], [], []
 
     for idx, row in df.iterrows():
         r = np.array([row['kite_pos_east'], row['kite_pos_north'], row['kite_height']])
@@ -170,53 +166,66 @@ def calc_rpy_wrt_tangential_plane(df):
             [-l12/l,              0,         r[2]/l],
         ])
 
-        r_e2b = rotation_matrix_earth2body(row['roll'], row['pitch'], row['yaw'])
+        r_e2b = rotation_matrix_earth2body(row[rpy_cols[0]], row[rpy_cols[1]], row[rpy_cols[2]])
         rm_spsi2b = r_e2b.dot(rm_s2e)
 
         y, p, r = unravel_euler_angles(rm_spsi2b, '321')  # 312 would give virtually the same result.
-        pitch_spsi2b.append(p), yaw_spsi2b.append(y), roll_spsi2b.append(r)
+        roll_spsi2b.append(r), pitch_spsi2b.append(p), yaw_spsi2b.append(y)
 
-    return pitch_spsi2b, roll_spsi2b, yaw_spsi2b
+    return roll_spsi2b, pitch_spsi2b, yaw_spsi2b
 
 
-def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=False):
+def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=False, i_cycle=None):
     from turning_center import find_turns_for_rolling_window
 
-    # yr, m, d = 2019, 10, 8
-    # i_cycle = 65
-    # file_name = '{:d}{:02d}{:02d}_{:04d}.csv'.format(yr, m, d, i_cycle)
-    # df = pd.read_csv(file_name)
-    # with open('20191008_{:04d}_rpy.npy'.format(i_cycle), 'rb') as f:
-    #     rpy = np.load(f)
-    #     df['roll'] = rpy[:, 0]*180./np.pi
-    #     df['pitch'] = -rpy[:, 1]*180./np.pi
-    #     df['yaw'] = -rpy[:, 2]*180./np.pi + 90
+    yr, m, d = 2019, 10, 8
+    if i_cycle is None:
+        i_cycle = 65
+    folder = '/home/mark/Projects/quasi-steady-model-sandbox/flight_data/cycles/{:d}{:02d}{:02d}v2/'.format(yr, m, d)
+    file_name = folder + '{:d}{:02d}{:02d}_{:04d}.csv'.format(yr, m, d, i_cycle)
+    df = pd.read_csv(file_name)
+    with open(folder + '20191008_{:04d}_rpy.npy'.format(i_cycle), 'rb') as f:
+        rpy = np.load(f)
+        df['roll'] = rpy[:, 0]*180./np.pi
+        df['pitch'] = -rpy[:, 1]*180./np.pi
+        df['yaw'] = -rpy[:, 2]*180./np.pi + 90
+
     # df = df[299:513]
     #
     # # 'ground_tether_length'
     # cols = ['time', 'date', 'time_of_day', 'kite_0_vx', 'kite_0_vy', 'kite_0_vz', 'kite_1_ax', 'kite_1_ay', 'kite_1_az',
-    #         'kite_0_roll', 'kite_0_pitch', 'kite_0_yaw', 'ground_tether_reelout_speed', 'ground_tether_force',
+    #         'kite_0_roll', 'kite_0_pitch', 'kite_0_yaw', 'kite_1_roll', 'kite_1_pitch', 'kite_1_yaw', 'ground_tether_reelout_speed', 'ground_tether_force',
     #         'est_upwind_direction', 'kite_pos_east', 'kite_pos_north', 'kite_height',
     #         'kite_elevation', 'kite_azimuth', 'kite_distance', 'kite_actual_steering', 'roll', 'pitch', 'yaw']
     # df.to_csv("20191008_0065_fig8.csv", index=False, na_rep='nan', columns=cols)
-
-    file_name = '20191008_0065_fig8.csv'
-    df = pd.read_csv(file_name)
+    #
+    # file_name = '20191008_0065_fig8.csv'
+    # df = pd.read_csv(file_name)
 
     df = df.interpolate()
     df['time'] = df['time'] - df['time'].iloc[0]
+    print("Time interval", df['time'].iloc[-1])
 
-    df['roll'] = df.roll*np.pi/180.
-    df['pitch'] = -df.pitch*np.pi/180.
-    df['yaw'] = -(df.yaw-90.)*np.pi/180.
-    # df['roll'] = (df.kite_0_roll-8.5)*np.pi/180.
-    # df['pitch'] = (-df.kite_0_pitch+3)*np.pi/180.
-    # df['yaw'] = -(df.kite_0_yaw-90.)*np.pi/180.
+    # df['roll'] = df.roll*np.pi/180.
+    # df['pitch'] = -df.pitch*np.pi/180.
+    # df['yaw'] = -(df.yaw-90.)*np.pi/180.
+
+    df['roll0'] = (df.kite_0_roll-8.5)*np.pi/180.
+    df['pitch0'] = (-df.kite_0_pitch+10)*np.pi/180.
+    df['yaw0'] = -(df.kite_0_yaw-90.)*np.pi/180.
+
+    df['roll1'] = (df.kite_1_roll-8.5)*np.pi/180.
+    df['pitch1'] = (-df.kite_1_pitch+10)*np.pi/180.
+    df['yaw1'] = -(df.kite_1_yaw-90.)*np.pi/180.
 
     df.kite_azimuth = -df.kite_azimuth
     df.ground_tether_force = df.ground_tether_force * 9.81
 
-    df['pitch_tau'], df['roll_tau'], df['yaw_tau'] = calc_rpy_wrt_tangential_plane(df)
+    find_turns_for_rolling_window(df)
+
+    # df['roll_tau'], df['pitch_tau'], df['yaw_tau'] = calc_rpy_wrt_tangential_plane(df)
+    df['roll0_tau'], df['pitch0_tau'], df['yaw0_tau'] = calc_rpy_wrt_tangential_plane(df, rpy_cols=['roll0', 'pitch0', 'yaw0'])
+    df['roll1_tau'], df['pitch1_tau'], df['yaw1_tau'] = calc_rpy_wrt_tangential_plane(df, rpy_cols=['roll1', 'pitch1', 'yaw1'])
 
     df['rz'] = df['kite_height']
     df['vz'] = -df['kite_0_vz']
@@ -233,6 +242,7 @@ def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=Fa
     # x_kite, a_kite = np.load('kite_states.npy')[:, :6], np.load('kite_states.npy')[:-1, 6:]
 
     if make_trajectory_consistent_with_integrator:
+        # Not just use the inferred acceleration, but also impose the corresponding position and velocity.
         df[['rx', 'ry', 'rz']] = x_kite[:, :3]
         df['kite_azimuth'], df['kite_elevation'], df['kite_distance'] = calc_spherical_coords(df['rx'], df['ry'], df['rz'])
         df[['vx', 'vy', 'vz']] = x_kite[:, 3:6]
@@ -242,3 +252,24 @@ def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=Fa
     df['az'] = np.hstack((a_kite[:, 2], [np.nan]))
 
     return df
+
+
+def add_panel_labels(ax, offset_x=.15):
+    import string
+    if ax.ndim > 1:
+        denominator = ax.shape[1]
+        ax = ax.reshape(-1)
+    else:
+        denominator = ax.shape[0]
+    for i, a in enumerate(ax):
+        label = '('+string.ascii_lowercase[i]+')'
+        if isinstance(offset_x, float):
+            x = -offset_x
+        else:
+            x = -offset_x[i % denominator]
+        if hasattr(a, 'text2D'):
+            fun = a.text2D
+        else:
+            fun = a.text
+        fun(x, .5, label, transform=a.transAxes, fontsize='large')  #, fontweight='bold', va='top', ha='right')
+

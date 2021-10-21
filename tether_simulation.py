@@ -6,10 +6,10 @@ from generate_initial_state import get_moving_pyramid, get_tilted_pyramid_3d, ch
     find_initial_velocities_satisfying_constraints
 from tether_model_and_verification import derive_tether_model, derive_tether_model_kcu, derive_tether_model_kcu_williams, dae_sim
 from utils import calc_cartesian_coords_enu, plot_vector, unravel_euler_angles, plot_flight_sections, \
-    read_and_transform_flight_data
-from paul_williams_model import shoot
+    read_and_transform_flight_data, add_panel_labels
+from paul_williams_model import shoot, plot_offaxial_tether_displacement
 from scipy.optimize import least_squares
-from turning_center import find_turns_for_rolling_window, determine_rigid_body_rotation
+from turning_center import determine_rigid_body_rotation, mark_points
 
 
 def run_helical_flight():
@@ -80,64 +80,91 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
     n_tether_elements = dyn.get('n_tether_elements', dyn['n_elements'])
     r_end = np.sum(sol_x[:, (n_tether_elements-1)*3:n_tether_elements*3]**2, axis=1)**.5
 
-    fig, ax = plt.subplots(3, 1, sharex=True)
-    ax[0].plot(t[1:], tether_force[:, 0]*1e-3, label='sim')
-    ax[0].set_ylabel("Tether force ground [kN]")
-    ax[0].set_ylim([0, 5.5])
-    ax[1].plot(t, sol_x[:, -2]-r_end, label='sim')
-    ax[1].set_ylabel("Difference tether length\nand radial position [m]")
-    ax[1].set_ylim([0, None])
-    ax[2].plot(t, sol_x[:, -1], label='sim')
-    ax[2].set_ylabel("Tether speed [m/s]")
-    ax[2].set_xlabel("Time [s]")
-    ax[2].set_ylim([0, None])
-    for a in ax: a.grid()
+    # fig, ax = plt.subplots(2, 1, sharex=True)
+    plt.figure(figsize=[4.8, 2.4])
+    plt.subplots_adjust(top=0.97, bottom=0.2, left=0.1, right=0.985)
+    plt.plot(t[1:], tether_force[:, 0]*1e-3, label='Dyn')
+    plt.ylabel("Tether force ground [kN]")
+    plt.ylim([0, 5.5])
+    plt.xlabel("Time [s]")
+    plt.grid()
     if flight_data is not None:
-        ax[0].plot(flight_data.time, flight_data.ground_tether_force * 1e-3, label='mea')
-        ax[2].plot(flight_data.time, flight_data.ground_tether_reelout_speed, label='mea')
-        ax[2].legend()
-        for a in ax: plot_flight_sections(a, flight_data)
+        plt.xlim([0, flight_data.iloc[-1]['time']])
+        plt.plot(flight_data.time, flight_data.ground_tether_force * 1e-3, label='Measured')
+        plt.legend()
+        plot_flight_sections(plt.gca(), flight_data)
+
+    # ax[1].plot(t, sol_x[:, -2]-r_end, label='sim')
+    # ax[1].set_ylabel("Difference tether length\nand radial position [m]")
+    # ax[1].set_ylim([0, None])
+    # ax[1].plot(t, sol_x[:, -1], label='sim')
+    # ax[1].set_ylabel("Tether speed [m/s]")
+    # ax[1].set_ylim([0, None])
+    # for a in ax: a.grid()
+    # if flight_data is not None:
+    #     ax[0].plot(flight_data.time, flight_data.ground_tether_force * 1e-3, label='mea')
+    #     ax[1].plot(flight_data.time, flight_data.ground_tether_reelout_speed, label='mea')
+    #     ax[1].legend()
+    #     for a in ax: plot_flight_sections(a, flight_data)
+    # add_panel_labels(ax)
 
     get_rotation_matrices = ca.Function('get_rotation_matrices', [dyn['x'], dyn['u']],
                                         [dyn['rotation_matrices']['tangential_plane'],
                                          dyn['rotation_matrices']['last_element']])
+
     ypr = np.empty((n_intervals+1, 3))
     ypr[0, :] = np.nan
-    rm_tau2e = np.empty((n_intervals, 3, 3))
-    rm_t2e = np.empty((n_intervals, 3, 3))
+    dcms_tau2e = np.empty((n_intervals, 3, 3))
+    dcms_t2e = np.empty((n_intervals, 3, 3))
+    pos_tau = np.zeros((n_intervals+1, dyn['n_elements']+1, 3))
+    pos_tau[0, :] = np.nan
     for i, (xi, ui) in enumerate(zip(sol_x[1:, :], u)):  # Determine at end of interval - as done for lagrangian multipliers
         dcms = get_rotation_matrices(xi, ui)
-        rm_tau2e_i = np.array(dcms[0])
-        rm_tau2e[i, :, :] = rm_tau2e_i
-        rm_t2e_i = np.array(dcms[1])
-        rm_t2e[i, :, :] = rm_t2e_i
-        rm_tau2t = rm_t2e_i.T.dot(rm_tau2e_i)
+        dcm_tau2e_i = np.array(dcms[0])
+        dcms_tau2e[i, :, :] = dcm_tau2e_i
+        dcm_t2e_i = np.array(dcms[1])
+        dcms_t2e[i, :, :] = dcm_t2e_i
+        dcm_tau2t = dcm_t2e_i.T.dot(dcm_tau2e_i)
 
-        ypr[i+1, :] = unravel_euler_angles(rm_tau2t, '321')
+        ypr[i+1, :] = unravel_euler_angles(dcm_tau2t, '321')
 
-    highlight_time_points = np.array([97, 107, 205, 215]) - 44  # 0,
+        for j in range(dyn['n_elements']+1):
+            pos_e = np.array((rx[i+1, j], ry[i+1, j], rz[i+1, j]))
+            pos_tau[i+1, j, :] = dcm_tau2e_i.T.dot(pos_e)
 
-    fig, ax_ypr = plt.subplots(3, 1, sharex=True)
+    res = {
+        'pitch_bridle': ypr[:, 1],
+        'roll_bridle': ypr[:, 2],
+        'offaxial_tether_shape': pos_tau,
+    }
+    import pickle
+    with open("dynamic_results{}.pickle".format(dyn['n_tether_elements']), 'wb') as f:
+        pickle.dump(res, f)
+
+    fig, ax_ypr = plt.subplots(2, 1, sharex=True)
     plt.suptitle("3-2-1 Euler angles between tangential\nand last tether element ref. frame")
-    ax_ypr[0].plot(t, ypr[:, 0]*180./np.pi, label='sim')
-    ax_ypr[0].set_ylabel("Yaw [deg]")
-    ax_ypr[1].plot(t, ypr[:, 1]*180./np.pi, label='sim')
-    ax_ypr[1].set_ylabel("Pitch [deg]")
-    ax_ypr[2].plot(t, ypr[:, 2]*180./np.pi, label='sim')
-    ax_ypr[2].set_ylabel("Roll [deg]")
-    ax_ypr[2].set_xlabel("Time [s]")
-    for i in highlight_time_points:
-        ax_ypr[1].plot(t[i], ypr[i, 1]*180./np.pi, 's')
-        ax_ypr[2].plot(t[i], ypr[i, 2]*180./np.pi, 's')
+    # for i in mark_points:
+    #     ax_ypr[1].plot(t[i], ypr[i, 1]*180./np.pi, 's')
+    #     ax_ypr[2].plot(t[i], ypr[i, 2]*180./np.pi, 's')
+    # ax_ypr[0].plot(t, ypr[:, 0]*180./np.pi, label='sim')
+    # ax_ypr[0].set_ylabel("Yaw [deg]")
+    ax_ypr[0].plot(t, ypr[:, 1]*180./np.pi, label='sim')
+    ax_ypr[0].set_ylabel("Pitch [deg]")
+    ax_ypr[1].plot(t, ypr[:, 2]*180./np.pi, label='sim')
+    ax_ypr[1].set_ylabel("Roll [deg]")
+    ax_ypr[1].set_xlabel("Time [s]")
+    add_panel_labels(ax_ypr)
 
     for a in ax_ypr: a.grid()
     if flight_data is not None:
         ypr_bridle_rbr = np.load('ypr_bridle_rigid_body_rotation.npy')
-        ax_ypr[1].plot(flight_data.time, flight_data.pitch_tau * 180. / np.pi, label='mea')
-        ax_ypr[1].plot(flight_data.time, ypr_bridle_rbr[:, 1] * 180. / np.pi, '--', label='rbr')
-        ax_ypr[2].plot(flight_data.time, flight_data.roll_tau * 180. / np.pi, label='mea')
-        ax_ypr[2].plot(flight_data.time, ypr_bridle_rbr[:, 2] * 180. / np.pi, '--', label='rbr')
-        ax_ypr[2].legend()
+        ax_ypr[0].plot(flight_data.time, flight_data.pitch0_tau * 180. / np.pi, label='mea0')
+        ax_ypr[0].plot(flight_data.time, flight_data.pitch1_tau * 180. / np.pi, label='mea1')
+        ax_ypr[0].plot(flight_data.time, ypr_bridle_rbr[:, 1] * 180. / np.pi, '--', label='rbr')
+        ax_ypr[1].plot(flight_data.time, flight_data.roll0_tau * 180. / np.pi, label='mea0')
+        ax_ypr[1].plot(flight_data.time, flight_data.roll1_tau * 180. / np.pi, label='mea1')
+        ax_ypr[1].plot(flight_data.time, ypr_bridle_rbr[:, 2] * 180. / np.pi, '--', label='rbr')
+        ax_ypr[1].legend()
         for a in ax_ypr: plot_flight_sections(a, flight_data)
 
     plt.figure(figsize=(8, 6))
@@ -166,14 +193,14 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
             if i > 0:
                 r = [rx[i, -1], ry[i, -1], rz[i, -1]]
 
-                ex_tau = rm_tau2e[i-1, :, 0]
+                ex_tau = dcms_tau2e[i-1, :, 0]
                 plot_vector(r, ex_tau, ax3d, scale_vector=15, color='k', label='tau ref frame')
-                ey_tau = rm_tau2e[i-1, :, 1]
+                ey_tau = dcms_tau2e[i-1, :, 1]
                 plot_vector(r, ey_tau, ax3d, scale_vector=15, color='k', label=None)
 
-                ex_t = rm_t2e[i-1, :, 0]
+                ex_t = dcms_t2e[i-1, :, 0]
                 plot_vector(r, ex_t, ax3d, scale_vector=15, color='g', label='tether end ref frame')
-                ey_t = rm_t2e[i-1, :, 1]
+                ey_t = dcms_t2e[i-1, :, 1]
                 plot_vector(r, ey_t, ax3d, scale_vector=15, color='g', label=None)
                 plt.legend()
 
@@ -181,9 +208,9 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
     else:
         # for r in zip(rx[::25, :], ry[::25, :], rz[::25, :]):
         #     ax3d.plot3D(r[0], r[1], r[2], linewidth=.7, color='grey')
-        ax3d.plot3D(rx[:, -1], ry[:, -1], rz[:, -1])  # Plot trajectory of end point
-        for i in highlight_time_points:
+        for i in mark_points:
             ax3d.plot3D(rx[i, :], ry[i, :], rz[i, :])
+        ax3d.plot3D(rx[:, -1], ry[:, -1], rz[:, -1])  # Plot trajectory of end point
 
         ax3d.set_xlim([0, 250])
         ax3d.set_ylim([-125, 125])
@@ -250,17 +277,15 @@ def match_measured_tether_speed(df):
     return sol.value(controls)
 
 
-def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate=True):
+def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate=False):
     vwx = 10
     # Get tether model.
     separate_kcu_mass = True
     n_tether_elements = 30
-    #TODO: running with Williams consistent model
     dyn = derive_tether_model_kcu_williams(n_tether_elements, False, vwx=vwx, impose_acceleration_directly=True)
     # dyn = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=vwx, impose_acceleration_directly=True)
 
     flight_data = read_and_transform_flight_data(True)  # Read flight data.
-    find_turns_for_rolling_window(flight_data)
     determine_rigid_body_rotation(flight_data)
     # for k in list(df): print(k)
     tf = .1  # Time step of the simulation - fixed by flight data time resolution.
@@ -333,6 +358,7 @@ def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate
 
         plt.figure()
         plt.plot(aero_forces)
+
 
 if __name__ == "__main__":
     # run_helical_flight()
