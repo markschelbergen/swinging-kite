@@ -528,9 +528,10 @@ def find_and_plot_tether_lengths(n_tether_elements=30, generate_sim_input=False,
 
     flight_data = read_and_transform_flight_data(True, i_cycle)  # Read flight data.
     #TODO: remove lower?
-    flight_data.loc[flight_data['phase'] >= 4, 'azimuth_turn_center'] = np.nan
-    flight_data.loc[flight_data['phase'] >= 4, 'elevation_turn_center'] = np.nan
-    flight_data.loc[flight_data['phase'] >= 4, 'flag_turn'] = False
+    if i_cycle is not None:
+        flight_data.loc[flight_data['phase'] >= 4, 'azimuth_turn_center'] = np.nan
+        flight_data.loc[flight_data['phase'] >= 4, 'elevation_turn_center'] = np.nan
+        flight_data.loc[flight_data['phase'] >= 4, 'flag_turn'] = False
     determine_rigid_body_rotation(flight_data)
 
     tether_lengths, strained_tether_lengths, ypr_bridle, ypr_bridle_vk, ypr_tether, ypr_aero_force, \
@@ -541,6 +542,7 @@ def find_and_plot_tether_lengths(n_tether_elements=30, generate_sim_input=False,
         plot_offaxial_tether_displacement(pos_tau)
         plot_aero_force_components(flight_data, aero_force_body, aero_force_bridle, flow_angles, ypr_body2bridle,
                                    kite_front_wrt_projected_velocity)
+        plt.show()
         plot_tether_element_attitudes(flight_data, ypr_aero_force, ypr_bridle, ypr_tether, shoot_args['separate_kcu_mass'])
     else:
         plot_tether_element_pitch(flight_data, ypr_aero_force, ypr_bridle, ypr_tether, shoot_args['separate_kcu_mass'], ax)
@@ -687,14 +689,14 @@ def combine_results_of_different_analyses():
 
 
 if __name__ == "__main__":
-    fig, ax = plt.subplots(5, 4)
-    for ic, a in zip(list(range(10, 20)) + list(range(55, 65)), ax.reshape(-1)):
-        try:
-            find_and_plot_tether_lengths(1, i_cycle=ic, ax=a)
-        except:
-            pass
+    # fig, ax = plt.subplots(5, 4)
+    # for ic, a in zip(list(range(10, 20)) + list(range(55, 65)), ax.reshape(-1)):
+    #     try:
+    #         find_and_plot_tether_lengths(1, i_cycle=ic, ax=a)
+    #     except:
+    #         pass
     # find_and_plot_tether_lengths(1)
-    # find_and_plot_tether_lengths(30)
+    find_and_plot_tether_lengths(30)
     # find_and_plot_tether_lengths(100)
     # combine_results_of_different_analyses()
     plt.show()
