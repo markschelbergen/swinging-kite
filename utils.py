@@ -183,20 +183,20 @@ def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=Fa
         folder = '/home/mark/Projects/quasi-steady-model-sandbox/flight_data/cycles/{:d}{:02d}{:02d}v2/'.format(yr, m, d)
         file_name = folder + '{:d}{:02d}{:02d}_{:04d}.csv'.format(yr, m, d, i_cycle)
         df = pd.read_csv(file_name)
+
         with open(folder + '20191008_{:04d}_rpy.npy'.format(i_cycle), 'rb') as f:
             rpy = np.load(f)
             df['roll'] = rpy[:, 0]*180./np.pi
             df['pitch'] = -rpy[:, 1]*180./np.pi
             df['yaw'] = -rpy[:, 2]*180./np.pi + 90
-
         df = df[299:513]
 
-        # # 'ground_tether_length'
-        # cols = ['time', 'date', 'time_of_day', 'kite_0_vx', 'kite_0_vy', 'kite_0_vz', 'kite_1_ax', 'kite_1_ay', 'kite_1_az',
-        #         'kite_0_roll', 'kite_0_pitch', 'kite_0_yaw', 'kite_1_roll', 'kite_1_pitch', 'kite_1_yaw', 'ground_tether_reelout_speed', 'ground_tether_force',
-        #         'est_upwind_direction', 'kite_pos_east', 'kite_pos_north', 'kite_height',
-        #         'kite_elevation', 'kite_azimuth', 'kite_distance', 'kite_actual_steering', 'roll', 'pitch', 'yaw']
-        # df.to_csv("20191008_0065_fig8.csv", index=False, na_rep='nan', columns=cols)
+        cols = ['time', 'date', 'time_of_day', 'kite_0_vx', 'kite_0_vy', 'kite_0_vz', 'kite_1_ax', 'kite_1_ay', 'kite_1_az',
+                'kite_0_roll', 'kite_0_pitch', 'kite_0_yaw', 'kite_1_roll', 'kite_1_pitch', 'kite_1_yaw', 'ground_tether_reelout_speed', 'ground_tether_force',
+                'est_upwind_direction', 'kite_pos_east', 'kite_pos_north', 'kite_height',
+                'kite_elevation', 'kite_azimuth', 'kite_distance', 'kite_actual_steering', 'roll', 'pitch', 'yaw']
+        df.to_csv("20191008_0065_fig8.csv", index=False, na_rep='nan', columns=cols)
+
     else:
         file_name = '20191008_0065_fig8.csv'
         df = pd.read_csv(file_name)
@@ -205,9 +205,10 @@ def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=Fa
     df['time'] = df['time'] - df['time'].iloc[0]
     print("Time interval", df['time'].iloc[-1])
 
-    # df['roll'] = df.roll*np.pi/180.
-    # df['pitch'] = -df.pitch*np.pi/180.
-    # df['yaw'] = -(df.yaw-90.)*np.pi/180.
+    # Lower only used for aero force decomposition
+    df['roll'] = df.roll*np.pi/180.
+    df['pitch'] = -df.pitch*np.pi/180.
+    df['yaw'] = -(df.yaw-90.)*np.pi/180.
 
     df['roll0'] = (df.kite_0_roll-8.5)*np.pi/180.
     df['pitch0'] = (-df.kite_0_pitch+10)*np.pi/180.

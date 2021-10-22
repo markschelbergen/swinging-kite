@@ -542,7 +542,6 @@ def find_and_plot_tether_lengths(n_tether_elements=30, generate_sim_input=False,
         plot_offaxial_tether_displacement(pos_tau)
         plot_aero_force_components(flight_data, aero_force_body, aero_force_bridle, flow_angles, ypr_body2bridle,
                                    kite_front_wrt_projected_velocity)
-        plt.show()
         plot_tether_element_attitudes(flight_data, ypr_aero_force, ypr_bridle, ypr_tether, shoot_args['separate_kcu_mass'])
     else:
         plot_tether_element_pitch(flight_data, ypr_aero_force, ypr_bridle, ypr_tether, shoot_args['separate_kcu_mass'], ax)
