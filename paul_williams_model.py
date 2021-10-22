@@ -482,7 +482,7 @@ def plot_tether_states(flight_data, strained_tether_lengths, tether_lengths,
     add_panel_labels(ax2, offset_x=.36)
 
 
-def plot_offaxial_tether_displacement(pos_tau, ax=None, ls='-', plot_rows=[0, 1]):
+def plot_offaxial_tether_displacement(pos_tau, ax=None, ls='-', plot_rows=[0, 1], plot_instances=mark_points[:5]):
     if ax is None:
         set_legend = True
 
@@ -506,10 +506,10 @@ def plot_offaxial_tether_displacement(pos_tau, ax=None, ls='-', plot_rows=[0, 1]
         set_legend = False
 
     for ir in plot_rows:
-        for mp_counter, i in enumerate(mark_points[:5]):
+        for counter, i in enumerate(plot_instances):
             # if mp_counter in [0, 2, 3]:
-            clr = 'C{}'.format(mp_counter)
-            ax[ir, 0].plot(pos_tau[i, :, 0], pos_tau[i, :, 2], ls, color=clr, label='{}'.format(mp_counter+1))
+            clr = 'C{}'.format(counter)
+            ax[ir, 0].plot(pos_tau[i, :, 0], pos_tau[i, :, 2], ls, color=clr, label='{}'.format(counter+1))
             ax[ir, 1].plot(pos_tau[i, :, 1], pos_tau[i, :, 2], ls, color=clr)
 
     if set_legend:
@@ -687,6 +687,41 @@ def combine_results_of_different_analyses():
     add_panel_labels(ax_tether_shape, (.38, .15))
 
 
+def sensitivity_study():
+    instance_ref = mark_points[2]
+    i_cycle = 65
+    shoot_args = {
+        'vwx': 10,
+        'separate_kcu_mass': True,
+        'elastic_elements': False,
+    }
+
+    flight_data = read_and_transform_flight_data(True, i_cycle)  # Read flight data.
+    determine_rigid_body_rotation(flight_data)
+    flight_data = flight_data[instance_ref:instance_ref+1]
+
+    ax = None
+    ypr_bridle_sensitivity = np.empty((0, 3))
+    n_elem_list = [15, 20, 30]
+    for n_tether_elements in n_elem_list:
+        shoot_args['n_tether_elements'] = n_tether_elements
+
+        tether_lengths, strained_tether_lengths, ypr_bridle, ypr_bridle_vk, ypr_tether, ypr_aero_force, \
+        aero_force_body, aero_force_bridle, flow_angles, kite_front_wrt_projected_velocity, ypr_body2bridle, pos_tau = \
+            find_tether_lengths(flight_data, shoot_args, plot=False)
+        ypr_bridle_sensitivity = np.vstack((ypr_bridle_sensitivity, ypr_bridle))
+
+        ax = plot_offaxial_tether_displacement(pos_tau, ax, plot_rows=[0], plot_instances=[0])
+
+    fig, ax_ypr = plt.subplots(2, 1, sharex=True)
+    plt.suptitle("3-2-1 Euler angles between tangential\nand local ref. frames")
+    ax_ypr[0].plot(n_elem_list, ypr_bridle_sensitivity[:, 1]*180./np.pi, 's-', label='Bridle')
+    ax_ypr[0].set_ylabel("Pitch [deg]")
+    ax_ypr[1].plot(n_elem_list, ypr_bridle_sensitivity[:, 2]*180./np.pi, 's-', label='Bridle')
+    ax_ypr[1].set_ylabel("Roll [deg]")
+    ax_ypr[1].set_xlabel("Number of tether elements [-]")
+
+
 if __name__ == "__main__":
     # fig, ax = plt.subplots(5, 4)
     # for ic, a in zip(list(range(10, 20)) + list(range(55, 65)), ax.reshape(-1)):
@@ -695,7 +730,8 @@ if __name__ == "__main__":
     #     except:
     #         pass
     # find_and_plot_tether_lengths(1)
-    find_and_plot_tether_lengths(30)
+    # find_and_plot_tether_lengths(30)
     # find_and_plot_tether_lengths(100)
     # combine_results_of_different_analyses()
+    sensitivity_study()
     plt.show()
