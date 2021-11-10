@@ -141,7 +141,7 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
     with open("dynamic_results{}.pickle".format(dyn['n_tether_elements']), 'wb') as f:
         pickle.dump(res, f)
 
-    fig, ax_ypr = plt.subplots(2, 1, sharex=True)
+    fig, ax_ypr = plt.subplots(3, 1, sharex=True)
     plt.suptitle("3-2-1 Euler angles between tangential\nand last tether element ref. frame")
     # for i in mark_points:
     #     ax_ypr[1].plot(t[i], ypr[i, 1]*180./np.pi, 's')
@@ -152,7 +152,8 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
     ax_ypr[0].set_ylabel("Pitch [deg]")
     ax_ypr[1].plot(t, ypr[:, 2]*180./np.pi, label='sim')
     ax_ypr[1].set_ylabel("Roll [deg]")
-    ax_ypr[1].set_xlabel("Time [s]")
+    ax_ypr[2].plot(t, ypr[:, 0]*180./np.pi, label='sim')
+    ax_ypr[-1].set_xlabel("Time [s]")
     add_panel_labels(ax_ypr)
 
     for a in ax_ypr: a.grid()
@@ -278,7 +279,7 @@ def match_measured_tether_speed(df):
 
 
 def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate=False):
-    vwx = 10
+    from system_properties import vwx
     # Get tether model.
     separate_kcu_mass = True
     n_tether_elements = 30

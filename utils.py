@@ -49,6 +49,30 @@ def rotation_matrix_earth_sphere(phi=0., beta=np.pi/2., yaw=0.):
     return r1.dot(r2).dot(r3)
 
 
+def rotation_matrix_earth2sphere(phi=0., beta=np.pi/2., heading=0.):
+    # Note that the elevation angle should be 90 degrees to yield the unity matrix.
+    # For kappa=0, the sphere coordinates are given in the polar, azimuth, and radial direction.
+    r1 = np.array([
+        [np.cos(phi), np.sin(phi), 0],
+        [-np.sin(phi), np.cos(phi), 0],
+        [0, 0, 1]
+    ])
+
+    r2 = np.array([
+        [np.sin(beta), 0, -np.cos(beta)],
+        [0, 1, 0],
+        [np.cos(beta), 0, np.sin(beta)]
+    ])
+
+    r3 = np.array([
+        [np.cos(heading), np.sin(heading), 0],
+        [-np.sin(heading), np.cos(heading), 0],
+        [0, 0, 1]
+    ])
+
+    return r3.dot(r2).dot(r1)
+
+
 def plot_vector_2d(p0, v, ax, scale_vector=.01, **kwargs):
     p1 = p0 + v * scale_vector
     vector = np.vstack(([p0], [p1])).T
@@ -106,13 +130,12 @@ def unravel_euler_angles(rm, sequence='321', elevation_ref=None, azimuth_ref=Non
     return yaw, pitch, roll
 
 
-def tranform_to_wind_rf(x, y, upwind_direction):
-    phi = -upwind_direction-np.pi/2.
-    rm = np.array([
+def tranform_to_wind_rf(x, y, phi):
+    rm_we = np.array([
         [np.cos(phi), np.sin(phi)],
         [-np.sin(phi), np.cos(phi)],
     ])
-    return rm.dot(np.array([x, y]))
+    return rm_we.dot(np.array([x, y]))
 
 
 def plot_flight_sections(ax, df):
@@ -153,26 +176,27 @@ def rotation_matrix_earth2body(roll, pitch, yaw, sequence='321'):
     return r
 
 
-def calc_rpy_wrt_tangential_plane(df, rpy_cols=['roll', 'pitch', 'yaw']):
-    roll_spsi2b, pitch_spsi2b, yaw_spsi2b = [], [], []
+def calc_rpy_bridle_wrt_tangential_plane(df, rpy_cols=('roll', 'pitch', 'yaw')):
+    roll_s2b, pitch_s2b, yaw_s2b = [], [], []
 
     for idx, row in df.iterrows():
         r = np.array([row['kite_pos_east'], row['kite_pos_north'], row['kite_height']])
         l12 = np.linalg.norm(r[:2])
         l = np.linalg.norm(r)
-        rm_s2e = np.array([
+        rm_es = np.array([
             [r[0]*r[2]/(l*l12), -r[1]/l12,  r[0]/l],
             [r[1]*r[2]/(l*l12), r[0]/l12, r[1]/l],
             [-l12/l,              0,         r[2]/l],
         ])
 
-        r_e2b = rotation_matrix_earth2body(row[rpy_cols[0]], row[rpy_cols[1]], row[rpy_cols[2]])
-        rm_spsi2b = r_e2b.dot(rm_s2e)
+        rm_ce = rotation_matrix_earth2body(row[rpy_cols[0]], row[rpy_cols[1]], row[rpy_cols[2]])
+        rm_bc = rotation_matrix_earth2body(0, -get_pitch_nose_down_angle_v3(1-row['kite_actual_depower']/100.), 0)
+        rm_bs = rm_bc.dot(rm_ce).dot(rm_es)
 
-        y, p, r = unravel_euler_angles(rm_spsi2b, '321')  # 312 would give virtually the same result.
-        roll_spsi2b.append(r), pitch_spsi2b.append(p), yaw_spsi2b.append(y)
+        y, p, r = unravel_euler_angles(rm_bs, '321')  # 312 would give virtually the same result.
+        roll_s2b.append(r), pitch_s2b.append(p), yaw_s2b.append(y)
 
-    return roll_spsi2b, pitch_spsi2b, yaw_spsi2b
+    return roll_s2b, pitch_s2b, yaw_s2b
 
 
 def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=False, i_cycle=None):
@@ -184,19 +208,18 @@ def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=Fa
         file_name = folder + '{:d}{:02d}{:02d}_{:04d}.csv'.format(yr, m, d, i_cycle)
         df = pd.read_csv(file_name)
 
-        with open(folder + '20191008_{:04d}_rpy.npy'.format(i_cycle), 'rb') as f:
+        with open(folder + '20191008_{:04d}_rpy_v2.npy'.format(i_cycle), 'rb') as f:
             rpy = np.load(f)
             df['roll'] = rpy[:, 0]*180./np.pi
             df['pitch'] = -rpy[:, 1]*180./np.pi
             df['yaw'] = -rpy[:, 2]*180./np.pi + 90
-        df = df[299:513]
-
-        cols = ['time', 'date', 'time_of_day', 'kite_0_vx', 'kite_0_vy', 'kite_0_vz', 'kite_1_ax', 'kite_1_ay', 'kite_1_az',
-                'kite_0_roll', 'kite_0_pitch', 'kite_0_yaw', 'kite_1_roll', 'kite_1_pitch', 'kite_1_yaw', 'ground_tether_reelout_speed', 'ground_tether_force',
-                'est_upwind_direction', 'kite_pos_east', 'kite_pos_north', 'kite_height',
-                'kite_elevation', 'kite_azimuth', 'kite_distance', 'kite_actual_steering', 'roll', 'pitch', 'yaw']
-        df.to_csv("20191008_0065_fig8.csv", index=False, na_rep='nan', columns=cols)
-
+        # df = df[299:513]
+        #
+        # cols = ['time', 'date', 'time_of_day', 'kite_0_vx', 'kite_0_vy', 'kite_0_vz', 'kite_1_ax', 'kite_1_ay', 'kite_1_az',
+        #         'kite_0_roll', 'kite_0_pitch', 'kite_0_yaw', 'kite_1_roll', 'kite_1_pitch', 'kite_1_yaw', 'ground_tether_reelout_speed', 'ground_tether_force',
+        #         'est_upwind_direction', 'kite_pos_east', 'kite_pos_north', 'kite_height',
+        #         'kite_elevation', 'kite_azimuth', 'kite_distance', 'kite_heading', 'kite_course', 'kite_actual_steering', 'roll', 'pitch', 'yaw', 'kite_actual_depower']
+        # df.to_csv("20191008_0065_fig8.csv", index=False, na_rep='nan', columns=cols)
     else:
         file_name = '20191008_0065_fig8.csv'
         df = pd.read_csv(file_name)
@@ -211,11 +234,11 @@ def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=Fa
     df['yaw'] = -(df.yaw-90.)*np.pi/180.
 
     df['roll0'] = (df.kite_0_roll-8.5)*np.pi/180.
-    df['pitch0'] = (-df.kite_0_pitch+10)*np.pi/180.
+    df['pitch0'] = (-df.kite_0_pitch+13.2)*np.pi/180.
     df['yaw0'] = -(df.kite_0_yaw-90.)*np.pi/180.
 
     df['roll1'] = (df.kite_1_roll-8.5)*np.pi/180.
-    df['pitch1'] = (-df.kite_1_pitch+10)*np.pi/180.
+    df['pitch1'] = (-df.kite_1_pitch+13.2)*np.pi/180.
     df['yaw1'] = -(df.kite_1_yaw-90.)*np.pi/180.
 
     df.kite_azimuth = -df.kite_azimuth
@@ -223,18 +246,18 @@ def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=Fa
 
     find_turns_for_rolling_window(df)
 
-    # df['roll_tau'], df['pitch_tau'], df['yaw_tau'] = calc_rpy_wrt_tangential_plane(df)
-    df['roll0_tau'], df['pitch0_tau'], df['yaw0_tau'] = calc_rpy_wrt_tangential_plane(df, rpy_cols=['roll0', 'pitch0', 'yaw0'])
-    df['roll1_tau'], df['pitch1_tau'], df['yaw1_tau'] = calc_rpy_wrt_tangential_plane(df, rpy_cols=['roll1', 'pitch1', 'yaw1'])
+    df['roll_tau'], df['pitch_tau'], df['yaw_tau'] = calc_rpy_bridle_wrt_tangential_plane(df, rpy_cols=['roll', 'pitch', 'yaw'])
+    df['roll0_tau'], df['pitch0_tau'], df['yaw0_tau'] = calc_rpy_bridle_wrt_tangential_plane(df, rpy_cols=['roll0', 'pitch0', 'yaw0'])
+    df['roll1_tau'], df['pitch1_tau'], df['yaw1_tau'] = calc_rpy_bridle_wrt_tangential_plane(df, rpy_cols=['roll1', 'pitch1', 'yaw1'])
 
     df['rz'] = df['kite_height']
     df['vz'] = -df['kite_0_vz']
     df['kite_1_az'] = -df['kite_1_az']
 
-    upwind_direction = df.loc[df.index[0], 'est_upwind_direction']
-    df['rx'], df['ry'] = tranform_to_wind_rf(df['kite_pos_east'], df['kite_pos_north'], upwind_direction)
-    df['vx'], df['vy'] = tranform_to_wind_rf(df['kite_0_vy'], df['kite_0_vx'], upwind_direction)
-    df['kite_1_ax'], df['kite_1_ay'] = tranform_to_wind_rf(df['kite_1_ay'], df['kite_1_ax'], upwind_direction)
+    phi_upwind_direction = -df.loc[df.index[0], 'est_upwind_direction']-np.pi/2.
+    df['rx'], df['ry'] = tranform_to_wind_rf(df['kite_pos_east'], df['kite_pos_north'], phi_upwind_direction)
+    df['vx'], df['vy'] = tranform_to_wind_rf(df['kite_0_vy'], df['kite_0_vx'], phi_upwind_direction)
+    df['kite_1_ax'], df['kite_1_ay'] = tranform_to_wind_rf(df['kite_1_ay'], df['kite_1_ax'], phi_upwind_direction)
 
     # Infer kite acceleration from measurements.
     x_kite, a_kite = find_acceleration_matching_kite_trajectory(df)
@@ -250,6 +273,14 @@ def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=Fa
     df['ax'] = np.hstack((a_kite[:, 0], [np.nan]))
     df['ay'] = np.hstack((a_kite[:, 1], [np.nan]))
     df['az'] = np.hstack((a_kite[:, 2], [np.nan]))
+
+    # from mpl_toolkits import mplot3d
+    # plt.figure()
+    # # plt.plot(df['phase'])
+    # # plt.plot(df['kite_actual_depower'])
+    # ax3d = plt.axes(projection='3d')
+    # ax3d.plot3D(x_kite[:, 0], x_kite[:, 1], x_kite[:, 2])
+    # plt.show()
 
     return df
 
@@ -273,3 +304,29 @@ def add_panel_labels(ax, offset_x=.15):
             fun = a.text
         fun(x, .5, label, transform=a.transAxes, fontsize='large')  #, fontweight='bold', va='top', ha='right')
 
+
+def get_pitch_nose_down_angle_v3(u_p):
+    # Determine the pitch down angle (see fig. 5 in Oehler) as a function of the power setting.
+    # u_p is the power setting ranging from 0 (fully depowered) - 1 (fully powered). The chord is assumed to be
+    # perpendicular to the power line when u_p=u_p_ref.
+    # Flight test of 8-10-2019, u_p=.78 for reel-out and u_p=.7 for reel-in.
+    # Powered flight (u_p=.78) pitch down angle: 3.2 degrees
+    # Depowered flight (u_p=.7) pitch down angle: 9.8 degrees
+
+    # Expression adopted from Oehler eq. 5.
+    b = 11.414  # Length between bridle point and front bridle connection with kite.
+    c = 1.81  # Chordwise length between front and rear bridle connection.
+    a0 = (b**2+c**2)**.5  # Length between bridle point and rear bridle connection with kite (trailing edge?).
+
+    dl_du = 5.  # Depower tape length range between fully depowered and powered. (1.7 used by Oehler)
+    u_p_ref = .82  # Power setting at which the power lines are perpendicular to the chord.
+    da = (u_p_ref - u_p)*dl_du/2
+    a = a0+da
+
+    pitch = np.arccos((b**2+c**2-a**2)/(2*b*c))-np.pi/2
+
+    return pitch
+
+
+if __name__ == "__main__":
+    print(get_pitch_nose_down_angle_v3(.78)*180./np.pi)

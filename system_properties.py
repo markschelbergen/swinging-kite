@@ -1,5 +1,7 @@
 from numpy import pi
 
+vwx = 10
+
 rho = 1.225
 g = 9.81
 d_t = .01
