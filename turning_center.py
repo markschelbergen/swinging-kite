@@ -55,7 +55,7 @@ def determine_rigid_body_rotation(flight_data, plot=False):
         ax.set_aspect('equal')
         plt.plot(flight_data['kite_azimuth'], flight_data['kite_elevation'])
 
-    omega_inferred = np.empty((flight_data.shape[0], 3))
+    omega_first_principle = np.empty((flight_data.shape[0], 3))
     omega_optimized = np.empty((flight_data.shape[0], 3))
 
     omega_magnitude = np.empty(flight_data.shape[0])
@@ -105,12 +105,12 @@ def determine_rigid_body_rotation(flight_data, plot=False):
             om_opt = least_squares(rigid_body_rotation_errors, om, args=(r_kite, v_kite, a_kite), verbose=0).x
             omega_magnitude[i] = np.linalg.norm(om)
 
-        omega_inferred[i, :] = om
+        omega_first_principle[i, :] = om
         omega_optimized[i, :] = om_opt
 
-    flight_data['omx'] = omega_inferred[:, 0]
-    flight_data['omy'] = omega_inferred[:, 1]
-    flight_data['omz'] = omega_inferred[:, 2]
+    flight_data['omx'] = omega_first_principle[:, 0]
+    flight_data['omy'] = omega_first_principle[:, 1]
+    flight_data['omz'] = omega_first_principle[:, 2]
     flight_data['omx_opt'] = omega_optimized[:, 0]
     flight_data['omy_opt'] = omega_optimized[:, 1]
     flight_data['omz_opt'] = omega_optimized[:, 2]

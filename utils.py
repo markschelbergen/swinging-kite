@@ -199,7 +199,7 @@ def calc_rpy_bridle_wrt_tangential_plane(df, rpy_cols=('roll', 'pitch', 'yaw')):
     return roll_s2b, pitch_s2b, yaw_s2b
 
 
-def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=False, i_cycle=None):
+def read_and_transform_flight_data(make_kinematics_consistent=False, i_cycle=None, kite_states_file_suffix=''):
     from turning_center import find_turns_for_rolling_window
 
     if i_cycle is not None:
@@ -213,6 +213,7 @@ def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=Fa
             df['roll'] = rpy[:, 0]*180./np.pi
             df['pitch'] = -rpy[:, 1]*180./np.pi
             df['yaw'] = -rpy[:, 2]*180./np.pi + 90
+        df['time'] = df['time'] - df['time'].iloc[0]
         # df = df[299:513]
         #
         # cols = ['time', 'date', 'time_of_day', 'kite_0_vx', 'kite_0_vy', 'kite_0_vz', 'kite_1_ax', 'kite_1_ay', 'kite_1_az',
@@ -223,10 +224,8 @@ def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=Fa
     else:
         file_name = '20191008_0065_fig8.csv'
         df = pd.read_csv(file_name)
-
+    df['time'] = df['time'].round(1)
     df = df.interpolate()
-    df['time'] = df['time'] - df['time'].iloc[0]
-    print("Time interval", df['time'].iloc[-1])
 
     # Lower only used for aero force decomposition
     df['roll'] = df.roll*np.pi/180.
@@ -234,11 +233,11 @@ def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=Fa
     df['yaw'] = -(df.yaw-90.)*np.pi/180.
 
     df['roll0'] = (df.kite_0_roll-8.5)*np.pi/180.
-    df['pitch0'] = (-df.kite_0_pitch+13.2)*np.pi/180.
+    df['pitch0'] = (-df.kite_0_pitch+7)*np.pi/180.
     df['yaw0'] = -(df.kite_0_yaw-90.)*np.pi/180.
 
     df['roll1'] = (df.kite_1_roll-8.5)*np.pi/180.
-    df['pitch1'] = (-df.kite_1_pitch+13.2)*np.pi/180.
+    df['pitch1'] = (-df.kite_1_pitch+7)*np.pi/180.
     df['yaw1'] = -(df.kite_1_yaw-90.)*np.pi/180.
 
     df.kite_azimuth = -df.kite_azimuth
@@ -260,11 +259,17 @@ def read_and_transform_flight_data(make_trajectory_consistent_with_integrator=Fa
     df['kite_1_ax'], df['kite_1_ay'] = tranform_to_wind_rf(df['kite_1_ay'], df['kite_1_ax'], phi_upwind_direction)
 
     # Infer kite acceleration from measurements.
-    x_kite, a_kite = find_acceleration_matching_kite_trajectory(df)
-    # np.save('kite_states.npy', np.hstack((x_kite, np.vstack((a_kite, [[np.nan]*3])))))
-    # x_kite, a_kite = np.load('kite_states.npy')[:, :6], np.load('kite_states.npy')[:-1, 6:]
+    kite_states_file = 'kite_states_{}.npy'.format(kite_states_file_suffix)
+    if kite_states_file_suffix == 'fo8':
+        x_kite, a_kite = find_acceleration_matching_kite_trajectory(df)
+        np.save(kite_states_file, np.hstack((x_kite, np.vstack((a_kite, [[np.nan]*3])))))
+    else:
+        if i_cycle is None:
+            x_kite, a_kite = np.load(kite_states_file)[299:513, :6], np.load(kite_states_file)[299:513-1, 6:]
+        else:
+            x_kite, a_kite = np.load(kite_states_file)[:, :6], np.load(kite_states_file)[:-1, 6:]
 
-    if make_trajectory_consistent_with_integrator:
+    if make_kinematics_consistent:
         # Not just use the inferred acceleration, but also impose the corresponding position and velocity.
         df[['rx', 'ry', 'rz']] = x_kite[:, :3]
         df['kite_azimuth'], df['kite_elevation'], df['kite_distance'] = calc_spherical_coords(df['rx'], df['ry'], df['rz'])

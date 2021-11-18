@@ -232,7 +232,7 @@ def derive_tether_model_kcu(n_tether_elements, separate_kcu_mass=False, explicit
             # TODO: add bridle drag?
             v_kcu = v[n_tether_elements-1, :]
             va = v_kcu - vw.T
-            d_kcu = -.5*rho*1.6*1.*ca.norm_2(va)*va
+            d_kcu = -.5*rho*ca.norm_2(va)*va*cd_kcu*frontal_area_kcu
     else:
         d_s = ca.SX.zeros(n_tether_elements, 3)
 
@@ -408,7 +408,7 @@ def derive_tether_model_kcu_williams(n_tether_elements, explicit=True, vwx=0, im
 
     v_kcu = v[n_tether_elements-1, :]
     va = v_kcu - vw.T
-    d_kcu = -.5*rho*1.6*1.*ca.norm_2(va)*va
+    d_kcu = -.5*rho*ca.norm_2(va)*va*cd_kcu*frontal_area_kcu
 
     e_k = 0
     e_p = 0

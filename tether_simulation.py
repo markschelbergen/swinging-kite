@@ -7,7 +7,7 @@ from generate_initial_state import get_moving_pyramid, get_tilted_pyramid_3d, ch
 from tether_model_and_verification import derive_tether_model, derive_tether_model_kcu, derive_tether_model_kcu_williams, dae_sim
 from utils import calc_cartesian_coords_enu, plot_vector, unravel_euler_angles, plot_flight_sections, \
     read_and_transform_flight_data, add_panel_labels
-from paul_williams_model import shoot, plot_offaxial_tether_displacement
+from paul_williams_model import get_tether_end_position, plot_offaxial_tether_displacement
 from scipy.optimize import least_squares
 from turning_center import determine_rigid_body_rotation, mark_points
 
@@ -62,8 +62,20 @@ def run_helical_flight():
     run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u)
 
 
-def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, flight_data=None):
-    t = np.arange(0, n_intervals+1)*tf
+def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, flight_data=None, plot_interval=(29.9, 51.2)):
+    if flight_data is not None:
+        t = flight_data.time
+        plot_interval_idx = (
+            (flight_data['time'] == plot_interval[0]).idxmax(),
+            (flight_data['time'] == plot_interval[1]).idxmax()
+        )
+        plot_interval_irow = (
+            plot_interval_idx[0] - flight_data.index[0],
+            plot_interval_idx[1] - flight_data.index[0],
+        )
+    else:
+        t = np.arange(0, n_intervals+1)*tf
+        plot_interval_idx = False
 
     sim = dae_sim(tf, n_intervals, dyn)
     sol_x, sol_nu = sim(x0, u)
@@ -88,8 +100,11 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
     plt.ylim([0, 5.5])
     plt.xlabel("Time [s]")
     plt.grid()
+    if plot_interval:
+        plt.xlim([flight_data.loc[plot_interval_idx[0], 'time'], flight_data.loc[plot_interval_idx[1], 'time']])
+    else:
+        plt.xlim([flight_data.iloc[0]['time'], flight_data.iloc[-1]['time']])
     if flight_data is not None:
-        plt.xlim([0, flight_data.iloc[-1]['time']])
         plt.plot(flight_data.time, flight_data.ground_tether_force * 1e-3, label='Measured')
         plt.legend()
         plot_flight_sections(plt.gca(), flight_data)
@@ -142,6 +157,10 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
         pickle.dump(res, f)
 
     fig, ax_ypr = plt.subplots(3, 1, sharex=True)
+    if plot_interval:
+        plt.xlim([flight_data.loc[plot_interval_idx[0], 'time'], flight_data.loc[plot_interval_idx[1], 'time']])
+    else:
+        plt.xlim([flight_data.iloc[0]['time'], flight_data.iloc[-1]['time']])
     plt.suptitle("3-2-1 Euler angles between tangential\nand last tether element ref. frame")
     # for i in mark_points:
     #     ax_ypr[1].plot(t[i], ypr[i, 1]*180./np.pi, 's')
@@ -158,13 +177,13 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
 
     for a in ax_ypr: a.grid()
     if flight_data is not None:
-        ypr_bridle_rbr = np.load('ypr_bridle_rigid_body_rotation.npy')
+        # ypr_bridle_rbr = np.load('ypr_bridle_rigid_body_rotation.npy')
         ax_ypr[0].plot(flight_data.time, flight_data.pitch0_tau * 180. / np.pi, label='mea0')
         ax_ypr[0].plot(flight_data.time, flight_data.pitch1_tau * 180. / np.pi, label='mea1')
-        ax_ypr[0].plot(flight_data.time, ypr_bridle_rbr[:, 1] * 180. / np.pi, '--', label='rbr')
+        # ax_ypr[0].plot(flight_data.time, ypr_bridle_rbr[:, 1] * 180. / np.pi, '--', label='rbr')
         ax_ypr[1].plot(flight_data.time, flight_data.roll0_tau * 180. / np.pi, label='mea0')
         ax_ypr[1].plot(flight_data.time, flight_data.roll1_tau * 180. / np.pi, label='mea1')
-        ax_ypr[1].plot(flight_data.time, ypr_bridle_rbr[:, 2] * 180. / np.pi, '--', label='rbr')
+        # ax_ypr[1].plot(flight_data.time, ypr_bridle_rbr[:, 2] * 180. / np.pi, '--', label='rbr')
         ax_ypr[1].legend()
         for a in ax_ypr: plot_flight_sections(a, flight_data)
 
@@ -209,9 +228,10 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
     else:
         # for r in zip(rx[::25, :], ry[::25, :], rz[::25, :]):
         #     ax3d.plot3D(r[0], r[1], r[2], linewidth=.7, color='grey')
+        i0, i1 = plot_interval_irow
         for i in mark_points:
-            ax3d.plot3D(rx[i, :], ry[i, :], rz[i, :])
-        ax3d.plot3D(rx[:, -1], ry[:, -1], rz[:, -1])  # Plot trajectory of end point
+            ax3d.plot3D(rx[i+i0, :], ry[i+i0, :], rz[i+i0, :])
+        ax3d.plot3D(rx[i0:i1, -1], ry[i0:i1, -1], rz[i0:i1, -1])  # Plot trajectory of end point
 
         ax3d.set_xlim([0, 250])
         ax3d.set_ylim([-125, 125])
@@ -278,27 +298,33 @@ def match_measured_tether_speed(df):
     return sol.value(controls)
 
 
-def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate=False):
+def run_simulation_with_fitted_acceleration(config=None, animate=False):
+    if config is None:
+        # i_cycle = None only looks at fo8
+        config = {
+            'i_cycle': None,
+            'input_file_suffix': 'fo8',
+            'sim_interval': None,
+        }
+    tether_states_file = 'tether_states_{}.npy'.format(config['input_file_suffix'])
+
     from system_properties import vwx
     # Get tether model.
-    separate_kcu_mass = True
     n_tether_elements = 30
     dyn = derive_tether_model_kcu_williams(n_tether_elements, False, vwx=vwx, impose_acceleration_directly=True)
-    # dyn = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=vwx, impose_acceleration_directly=True)
 
-    flight_data = read_and_transform_flight_data(True)  # Read flight data.
+    flight_data = read_and_transform_flight_data(True, config['i_cycle'], config['input_file_suffix'])  # Read flight data.
+    if config['sim_interval'] is not None:
+        flight_data = flight_data.iloc[config['sim_interval'][0]:config['sim_interval'][1]]
+    else:
+        config['sim_interval'] = (0, flight_data.shape[0])
+
     determine_rigid_body_rotation(flight_data)
-    # for k in list(df): print(k)
     tf = .1  # Time step of the simulation - fixed by flight data time resolution.
     n_intervals = flight_data.shape[0] - 1  # Number of simulation steps - fixed by selected flight data interval.
 
-    # Control input for this simulation exists of tether acceleration and accelerations on last point mass.
-    if realistic_tether_input:  # Infer tether acceleration from measurements.
-        # ddl = match_measured_tether_speed(flight_data)
-        ddl = np.load('tether_states.npy')[:-1, 2]
-    else:  # Run simulation with constant tether acceleration and, in case the latter is set to zero, constant tether
-        # speed.
-        ddl = 0
+    # ddl = match_measured_tether_speed(flight_data)
+    ddl = np.load(tether_states_file)[config['sim_interval'][0]:config['sim_interval'][1]-1, 2]
 
     # Set control input array for simulation.
     u = np.zeros((n_intervals, 4))
@@ -306,26 +332,19 @@ def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate
     u[:, 1:] = flight_data[['ax', 'ay', 'az']].values[:-1, :]
 
     # Get starting position of simulation
-    if realistic_tether_input:
-        # dl0 = flight_data.loc[flight_data.index[0], 'ground_tether_reelout_speed']
-        # delta_l0 = 1.75  # Initial difference between the radial position of the kite and tether length.
-        dl0 = np.load('tether_states.npy')[0, 1]
-        l0 = np.load('tether_states.npy')[0, 0]
-    else:
-        r0 = flight_data.iloc[0]['kite_distance']
-        dl0 = 1.24
-        delta_l0 = 1.2  #1.05  # Initial difference between the radial position of the kite and tether length.
-        l0 = r0+delta_l0  # Lower to increase tether force, but setting too low results in the tether being
-        # shorter than the radial position of the kite and thus a crashing simulation.
+    # dl0 = flight_data.loc[flight_data.index[0], 'ground_tether_reelout_speed']
+    # delta_l0 = 1.75  # Initial difference between the radial position of the kite and tether length.
+    dl0 = np.load(tether_states_file)[config['sim_interval'][0], 1]
+    l0 = np.load(tether_states_file)[config['sim_interval'][0], 0]
 
     positions = []
     for i in range(2):
         row = flight_data.iloc[i]
-        args = (l0, n_tether_elements, list(row[['rx', 'ry', 'rz']]), list(row[['omx_opt', 'omy_opt', 'omz_opt']]), vwx,
-                separate_kcu_mass, False)
-        opt_res = least_squares(shoot, list(row[['kite_elevation', 'kite_azimuth', 'kite_distance']]), args=args,
+        args = (l0, n_tether_elements, list(row[['rx', 'ry', 'rz']]), list(row[['omx_opt', 'omy_opt', 'omz_opt']]),
+                True, False)
+        opt_res = least_squares(get_tether_end_position, list(row[['kite_elevation', 'kite_azimuth', 'kite_distance']]), args=args,
                                 kwargs={'find_force': True}, verbose=0)
-        positions.append(shoot(opt_res.x, *args, return_values=True, find_force=True)[0][1:, :])
+        positions.append(get_tether_end_position(opt_res.x, *args, return_values=True, find_force=True)[0][1:, :])
     r = positions[0]
     v = (positions[1]-positions[0])/tf
 
@@ -338,9 +357,9 @@ def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate
 
     infer_aero_forces = False
     if infer_aero_forces:
-        dyn_explicit = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, True, vwx=vwx, impose_acceleration_directly=True)
+        dyn_explicit = derive_tether_model_kcu(n_tether_elements, True, vwx=vwx, impose_acceleration_directly=True)
         fun_b = ca.Function('f_b', [dyn_explicit['x'], dyn_explicit['u']], [dyn_explicit['b']])
-        dyn_f = derive_tether_model_kcu(n_tether_elements, separate_kcu_mass, False, vwx=vwx, impose_acceleration_directly=False)
+        dyn_f = derive_tether_model_kcu(n_tether_elements, False, vwx=vwx, impose_acceleration_directly=False)
         fun_mat = ca.Function('f_mat', [dyn_f['x'], dyn_f['u']], [dyn_f['a'], dyn_f['c']])
 
         aero_forces = []
@@ -362,6 +381,15 @@ def run_simulation_with_fitted_acceleration(realistic_tether_input=True, animate
 
 
 if __name__ == "__main__":
-    # run_helical_flight()
-    run_simulation_with_fitted_acceleration()
+    # config = {
+    #     'i_cycle': None,
+    #     'input_file_suffix': 'fo8',
+    #     'sim_interval': None,
+    # }
+    config = {
+        'i_cycle': 65,
+        'input_file_suffix': 'rugid',
+        'sim_interval': (270, 513),
+    }
+    run_simulation_with_fitted_acceleration(config)
     plt.show()
