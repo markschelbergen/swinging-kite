@@ -144,6 +144,25 @@ def plot_flight_sections(ax, df):
     ax.fill_between(df.time, y0, y1, where=df['flag_turn'], facecolor='lightsteelblue', alpha=0.5) # lightgrey
 
 
+def plot_flight_sections2(ax, df, use_flag_turn=False):
+    if isinstance(ax, np.ndarray):
+        ax = ax.reshape(-1)
+    else:
+        ax = [ax]
+    for a in ax:
+        y0, y1 = a.get_ylim()
+        a.set_ylim([y0, y1])
+        if use_flag_turn:
+            a.fill_between(df.time, y0, y1, where=df['flag_turn'], facecolor='lightsteelblue', alpha=0.5) # lightgrey
+        else:
+            a.fill_between(df.time, y0, y1, where=df['pattern_section'] == 2, facecolor='lightgrey', alpha=0.5)
+            a.fill_between(df.time, y0, y1, where=df['pattern_section'] == 0, facecolor='lightsteelblue', alpha=0.5)
+            for i_ph in range(6):
+                mask = df['phase'] == i_ph
+                if mask.sum() > 0:
+                    a.axvline(df.loc[mask.idxmax(), 'time'], linestyle='--', color='grey')
+
+
 def rotation_matrix_earth2body(roll, pitch, yaw, sequence='321'):
     # Returns rotation matrix to transform from earth to body reference frame.
     # Earth: East, North, up
@@ -199,7 +218,7 @@ def calc_rpy_bridle_wrt_tangential_plane(df, rpy_cols=('roll', 'pitch', 'yaw')):
     return roll_s2b, pitch_s2b, yaw_s2b
 
 
-def read_and_transform_flight_data(make_kinematics_consistent=False, i_cycle=None, kite_states_file_suffix=''):
+def read_and_transform_flight_data(make_kinematics_consistent=True, i_cycle=None):  #, kite_states_file_suffix=''):
     from turning_center import find_turns_for_rolling_window
 
     if i_cycle is not None:
@@ -256,18 +275,20 @@ def read_and_transform_flight_data(make_kinematics_consistent=False, i_cycle=Non
     phi_upwind_direction = -df.loc[df.index[0], 'est_upwind_direction']-np.pi/2.
     df['rx'], df['ry'] = tranform_to_wind_rf(df['kite_pos_east'], df['kite_pos_north'], phi_upwind_direction)
     df['vx'], df['vy'] = tranform_to_wind_rf(df['kite_0_vy'], df['kite_0_vx'], phi_upwind_direction)
+    df[['kite_0_vx', 'kite_0_vy', 'kite_0_vz']] = df[['vx', 'vy', 'vz']].copy()
     df['kite_1_ax'], df['kite_1_ay'] = tranform_to_wind_rf(df['kite_1_ay'], df['kite_1_ax'], phi_upwind_direction)
 
     # Infer kite acceleration from measurements.
-    kite_states_file = 'kite_states_{}.npy'.format(kite_states_file_suffix)
-    if kite_states_file_suffix == 'fo8':
-        x_kite, a_kite = find_acceleration_matching_kite_trajectory(df)
-        np.save(kite_states_file, np.hstack((x_kite, np.vstack((a_kite, [[np.nan]*3])))))
+    kite_states_file = 'kite_states_rad.npy'  #.format(kite_states_file_suffix)
+    # if kite_states_file_suffix == 'fo8':
+    #     x_kite, a_kite = find_acceleration_matching_kite_trajectory(df)
+    #     np.save(kite_states_file, np.hstack((x_kite, np.vstack((a_kite, [[np.nan]*3])))))
+    # else:
+    if i_cycle is None:
+        # x_kite, a_kite = find_acceleration_matching_kite_trajectory(df)
+        x_kite, a_kite = np.load(kite_states_file)[299:513, :6], np.load(kite_states_file)[299:513-1, 6:]
     else:
-        if i_cycle is None:
-            x_kite, a_kite = np.load(kite_states_file)[299:513, :6], np.load(kite_states_file)[299:513-1, 6:]
-        else:
-            x_kite, a_kite = np.load(kite_states_file)[:, :6], np.load(kite_states_file)[:-1, 6:]
+        x_kite, a_kite = np.load(kite_states_file)[:, :6], np.load(kite_states_file)[:-1, 6:]
 
     if make_kinematics_consistent:
         # Not just use the inferred acceleration, but also impose the corresponding position and velocity.

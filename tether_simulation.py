@@ -97,7 +97,7 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
     plt.subplots_adjust(top=0.97, bottom=0.2, left=0.1, right=0.985)
     plt.plot(t[1:], tether_force[:, 0]*1e-3, label='Dyn')
     plt.ylabel("Tether force ground [kN]")
-    plt.ylim([0, 5.5])
+    plt.ylim([0, None])
     plt.xlabel("Time [s]")
     plt.grid()
     if plot_interval:
@@ -148,9 +148,9 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
             pos_tau[i+1, j, :] = dcm_tau2e_i.T.dot(pos_e)
 
     res = {
-        'pitch_bridle': ypr[:, 1],
-        'roll_bridle': ypr[:, 2],
-        'offaxial_tether_shape': pos_tau,
+        'pitch_bridle': ypr[plot_interval_irow[0]:plot_interval_irow[1]+1, 1],
+        'roll_bridle': ypr[plot_interval_irow[0]:plot_interval_irow[1]+1, 2],
+        'offaxial_tether_shape': pos_tau[plot_interval_irow[0]:plot_interval_irow[1]+1],
     }
     import pickle
     with open("dynamic_results{}.pickle".format(dyn['n_tether_elements']), 'wb') as f:
@@ -259,61 +259,24 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
     return sol_x, sol_nu
 
 
-def match_measured_tether_speed(df):
-    n_intervals = df.shape[0]-1
-    tf = .1
-
-    # ODE for kinematic model
-    dl = ca.SX.sym('dl')
-    ddl = ca.SX.sym('ddl')
-
-    # Create an integrator
-    dae = {'x': dl, 'ode': ddl, 'p': ddl}
-
-    intg = ca.integrator('intg', 'idas', dae, {'tf': tf})
-
-    opti = ca.casadi.Opti()
-
-    # Decision variables for states
-    states = opti.variable(n_intervals+1)
-    # Decision variables for control vector
-    controls = opti.variable(n_intervals)
-
-    # Gap-closing shooting constraints
-    for k in range(n_intervals):
-        res = intg(x0=states[k], p=controls[k])
-        opti.subject_to(states[k+1] == res["xf"])
-
-    # Initial guesses
-    opti.set_initial(states, df['ground_tether_reelout_speed'].values)
-    opti.set_initial(controls, np.diff(df['ground_tether_reelout_speed'].values)/.1)
-
-    opti.minimize(ca.sumsqr(states - df['ground_tether_reelout_speed'].values))
-
-    # solve optimization problem
-    opti.solver('ipopt')
-
-    sol = opti.solve()
-
-    return sol.value(controls)
-
-
 def run_simulation_with_fitted_acceleration(config=None, animate=False):
     if config is None:
         # i_cycle = None only looks at fo8
         config = {
             'i_cycle': None,
-            'input_file_suffix': 'fo8',
+            # 'input_file_suffix': 'fo8',
             'sim_interval': None,
+            'tether_slack0': .3,
+            'use_measured_reelout_acceleration': False,
         }
-    tether_states_file = 'tether_states_{}.npy'.format(config['input_file_suffix'])
+    tether_states_file = 'tether_states_rad.npy'
 
     from system_properties import vwx
     # Get tether model.
     n_tether_elements = 30
     dyn = derive_tether_model_kcu_williams(n_tether_elements, False, vwx=vwx, impose_acceleration_directly=True)
 
-    flight_data = read_and_transform_flight_data(True, config['i_cycle'], config['input_file_suffix'])  # Read flight data.
+    flight_data = read_and_transform_flight_data(True, config['i_cycle'])
     if config['sim_interval'] is not None:
         flight_data = flight_data.iloc[config['sim_interval'][0]:config['sim_interval'][1]]
     else:
@@ -323,19 +286,20 @@ def run_simulation_with_fitted_acceleration(config=None, animate=False):
     tf = .1  # Time step of the simulation - fixed by flight data time resolution.
     n_intervals = flight_data.shape[0] - 1  # Number of simulation steps - fixed by selected flight data interval.
 
-    # ddl = match_measured_tether_speed(flight_data)
-    ddl = np.load(tether_states_file)[config['sim_interval'][0]:config['sim_interval'][1]-1, 2]
+    if config['use_measured_reelout_acceleration']:
+        ddl = np.diff(flight_data['ground_tether_reelout_speed'].values)/.1
+        dl0 = flight_data.loc[flight_data.index[0], 'ground_tether_reelout_speed']
+        dl0 += .02
+    else:
+        ddl = np.load(tether_states_file)[config['sim_interval'][0]:config['sim_interval'][1]-1, 2]
+        dl0 = np.load(tether_states_file)[config['sim_interval'][0], 1]
+
+    l0 = np.load(tether_states_file)[config['sim_interval'][0], 0] + config['tether_slack0']
 
     # Set control input array for simulation.
     u = np.zeros((n_intervals, 4))
     u[:, 0] = ddl
     u[:, 1:] = flight_data[['ax', 'ay', 'az']].values[:-1, :]
-
-    # Get starting position of simulation
-    # dl0 = flight_data.loc[flight_data.index[0], 'ground_tether_reelout_speed']
-    # delta_l0 = 1.75  # Initial difference between the radial position of the kite and tether length.
-    dl0 = np.load(tether_states_file)[config['sim_interval'][0], 1]
-    l0 = np.load(tether_states_file)[config['sim_interval'][0], 0]
 
     positions = []
     for i in range(2):
@@ -388,8 +352,10 @@ if __name__ == "__main__":
     # }
     config = {
         'i_cycle': 65,
-        'input_file_suffix': 'rugid',
+        # 'input_file_suffix': 'rad',
         'sim_interval': (270, 513),
+        'tether_slack0': .3,
+        'use_measured_reelout_acceleration': False,
     }
     run_simulation_with_fitted_acceleration(config)
     plt.show()

@@ -12,7 +12,6 @@ tether_stiffness = tether_modulus*pi*(d_t/2)**2
 
 m_kite = 11
 m_kcu = 16
-# m_kcu = 8
 l_bridle = 11.5
 
 cd_kcu = 1.
