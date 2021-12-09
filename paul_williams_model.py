@@ -362,10 +362,10 @@ def find_tether_forces(flight_data, tether_lengths, config):
 
 
 def plot_tether_element_pitch(flight_data, ypr_bridle, ax):
-    ax.plot(flight_data.time, ypr_bridle[:, 1]*180./np.pi, label='T-I N=30')
     ax.grid()
     ax.plot(flight_data.time, flight_data.pitch0_tau * 180. / np.pi, label='Sensor 0')
     ax.plot(flight_data.time, flight_data.pitch1_tau * 180. / np.pi, label='Sensor 1')
+    ax.plot(flight_data.time, ypr_bridle[:, 1]*180./np.pi, label='T-I N=30')
     ax.set_xlim([flight_data.iloc[0]['time'], flight_data.iloc[-1]['time']])
     plot_flight_sections(ax, flight_data)
 
@@ -583,6 +583,8 @@ def find_and_plot_tether_lengths(n_tether_elements=30, export_tether_lengths=Fal
     plot_instances = [i+plot_interval_irow[0] for i in mark_points]
     plot_instances2 = [i+plot_interval_irow[0] for i in mark_points[:5]]
 
+    # # Lower was used to investigate the instance at the middle of the turn more closesly, i.e. plotting the
+    # # displacement wrt the vertical directino.
     # i_mp = 2  # 2
     # flight_data = flight_data[mark_points[i_mp]+plot_interval_irow[0]:mark_points[i_mp]+plot_interval_irow[0]+1]
     # plot_instances = [0]
@@ -590,17 +592,18 @@ def find_and_plot_tether_lengths(n_tether_elements=30, export_tether_lengths=Fal
 
     tether_lengths, strained_tether_lengths, ypr_bridle, ypr_bridle_vk, ypr_tether, ypr_aero_force, \
     aero_force_body, aero_force_bridle, flow_angles, kite_front_wrt_projected_velocity, ypr_body2bridle, pos_tau = \
-        find_tether_lengths(flight_data, config, plot=True, plot_instances=plot_instances)
+        find_tether_lengths(flight_data, config, plot=False, plot_instances=plot_instances)
 
-    if ax is None:
+    if ax is not None:
+        assert config['separate_kcu_mass'], "Analysis only used with bridle element"
+        # np.save('ypr_bridle_cycle{}.npy'.format(i_cycle), ypr_bridle)
+        ypr_bridle = np.load('ypr_bridle_cycle{}.npy'.format(i_cycle))
+        plot_tether_element_pitch(flight_data, ypr_bridle, ax)
+    else:
         plot_offaxial_tether_displacement(pos_tau, plot_instances=plot_instances2)
         plot_aero_force_components(flight_data, aero_force_body, aero_force_bridle, flow_angles, ypr_body2bridle,
                                    kite_front_wrt_projected_velocity)
         plot_tether_element_attitudes(flight_data, ypr_aero_force, ypr_bridle, ypr_tether, config['separate_kcu_mass'], mark_instances=plot_instances2)
-    else:
-        assert config['separate_kcu_mass'], "Analysis only used with bridle element"
-        np.save('ypr_bridle_cycle{}.npy'.format(i_cycle), ypr_bridle)
-        plot_tether_element_pitch(flight_data, ypr_bridle, ax)
 
         # fitted_tether_length_and_speed, fitted_tether_acceleration = \
         #     match_tether_length_and_speed(tether_lengths, flight_data.ground_tether_reelout_speed,
@@ -608,20 +611,20 @@ def find_and_plot_tether_lengths(n_tether_elements=30, export_tether_lengths=Fal
         # plot_tether_states(flight_data, strained_tether_lengths, tether_lengths,
         #                    fitted_tether_length_and_speed, fitted_tether_acceleration)
 
-    if export_tether_lengths:
-        np.save('tether_lengths.npy', tether_lengths)
-        # if config['separate_kcu_mass']:
-        #     np.save('ypr_bridle_rigid_body_rotation.npy', ypr_bridle)
+        if export_tether_lengths:
+            np.save('tether_lengths.npy', tether_lengths)
+            # if config['separate_kcu_mass']:
+            #     np.save('ypr_bridle_rigid_body_rotation.npy', ypr_bridle)
 
-    if config['separate_kcu_mass'] and not config['elastic_elements']:
-        res = {
-            'strained_tether_lengths': strained_tether_lengths,
-            'pitch_bridle': ypr_bridle[:, 1],
-            'roll_bridle': ypr_bridle[:, 2],
-            'offaxial_tether_shape': pos_tau,
-        }
-        with open("time_invariant_results{}.pickle".format(config['n_tether_elements']), 'wb') as f:
-            pickle.dump(res, f)
+        if config['separate_kcu_mass'] and not config['elastic_elements']:
+            res = {
+                'strained_tether_lengths': strained_tether_lengths,
+                'pitch_bridle': ypr_bridle[:, 1],
+                'roll_bridle': ypr_bridle[:, 2],
+                'offaxial_tether_shape': pos_tau,
+            }
+            with open("time_invariant_results{}.pickle".format(config['n_tether_elements']), 'wb') as f:
+                pickle.dump(res, f)
 
 
 def match_tether_length_and_speed(tether_lengths, radius, tether_speeds=None):
@@ -778,10 +781,9 @@ def plot_pitch_multi_cycles():
     plt.subplots_adjust(top=0.945, bottom=0.085, left=left, right=right, hspace=0.36, wspace=0.085)
     fig.supxlabel('Time [s]', x=(left+right)/2)
     fig.supylabel("Pitch [$^\circ$]")
-    for ic, a in zip(list(range(65, 66)), ax.reshape(-1)):
+    for ic, a in zip(list(range(65, 75)), ax.reshape(-1)):
         find_and_plot_tether_lengths(30, i_cycle=ic, ax=a)
         a.text(.05, .75, "Cycle {}".format(ic), transform=a.transAxes)
-        break
     ax[0, 0].legend(bbox_to_anchor=(.4, 1.07, 1.2+wspace, .5), loc="lower left", mode="expand",
                        borderaxespad=0, ncol=3)
     plt.show()
@@ -852,7 +854,7 @@ if __name__ == "__main__":
     find_and_plot_tether_lengths(30)  #, config=config)
     # fit_reelout_acceleration_to_lengths(65)
     # find_and_plot_tether_lengths(100)
-    # combine_results_of_different_analyses()
+    combine_results_of_different_analyses()
     # sensitivity_study()
     # sensitivity_kcu()
     plt.show()

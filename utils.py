@@ -1,8 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from find_consistent_kite_states import find_acceleration_matching_kite_trajectory
-
+from flight_trajectory_reconstruction import find_acceleration_matching_kite_trajectory
+from os.path import isfile
 
 def calc_cartesian_coords_enu(az, el, r):
     z = np.sin(el)*r
@@ -227,11 +227,14 @@ def read_and_transform_flight_data(make_kinematics_consistent=True, i_cycle=None
         file_name = folder + '{:d}{:02d}{:02d}_{:04d}.csv'.format(yr, m, d, i_cycle)
         df = pd.read_csv(file_name)
 
-        with open(folder + '20191008_{:04d}_rpy_v2.npy'.format(i_cycle), 'rb') as f:
-            rpy = np.load(f)
-            df['roll'] = rpy[:, 0]*180./np.pi
-            df['pitch'] = -rpy[:, 1]*180./np.pi
-            df['yaw'] = -rpy[:, 2]*180./np.pi + 90
+        try:
+            with open(folder + '20191008_{:04d}_rpy_v2.npy'.format(i_cycle), 'rb') as f:
+                rpy = np.load(f)
+                df['roll'] = rpy[:, 0]*180./np.pi
+                df['pitch'] = -rpy[:, 1]*180./np.pi
+                df['yaw'] = -rpy[:, 2]*180./np.pi + 90
+        except FileNotFoundError:
+            df['roll'], df['pitch'], df['yaw'] = np.nan, np.nan, np.nan
         df['time'] = df['time'] - df['time'].iloc[0]
         # df = df[299:513]
         #
@@ -259,6 +262,8 @@ def read_and_transform_flight_data(make_kinematics_consistent=True, i_cycle=None
     df['pitch1'] = (-df.kite_1_pitch+7)*np.pi/180.
     df['yaw1'] = -(df.kite_1_yaw-90.)*np.pi/180.
 
+    # df.kite_1_yaw_rate = -df.kite_1_yaw_rate
+
     df.kite_azimuth = -df.kite_azimuth
     df.ground_tether_force = df.ground_tether_force * 9.81
 
@@ -278,17 +283,21 @@ def read_and_transform_flight_data(make_kinematics_consistent=True, i_cycle=None
     df[['kite_0_vx', 'kite_0_vy', 'kite_0_vz']] = df[['vx', 'vy', 'vz']].copy()
     df['kite_1_ax'], df['kite_1_ay'] = tranform_to_wind_rf(df['kite_1_ay'], df['kite_1_ax'], phi_upwind_direction)
 
-    # Infer kite acceleration from measurements.
-    kite_states_file = 'kite_states_rad.npy'  #.format(kite_states_file_suffix)
-    # if kite_states_file_suffix == 'fo8':
-    #     x_kite, a_kite = find_acceleration_matching_kite_trajectory(df)
-    #     np.save(kite_states_file, np.hstack((x_kite, np.vstack((a_kite, [[np.nan]*3])))))
-    # else:
     if i_cycle is None:
-        # x_kite, a_kite = find_acceleration_matching_kite_trajectory(df)
-        x_kite, a_kite = np.load(kite_states_file)[299:513, :6], np.load(kite_states_file)[299:513-1, 6:]
+        kite_states_file = 'kite_states_cycle65.npy'
+        x, u = np.load(kite_states_file)[299:513, :8], np.load(kite_states_file)[299:513-1, 8:]
     else:
-        x_kite, a_kite = np.load(kite_states_file)[:, :6], np.load(kite_states_file)[:-1, 6:]
+        kite_states_file = 'kite_states_cycle{}.npy'.format(i_cycle)
+        if isfile(kite_states_file):
+            x, u = np.load(kite_states_file)[:, :8], np.load(kite_states_file)[:-1, 8:]
+        else:
+            x, u = find_acceleration_matching_kite_trajectory(df)
+            np.save(kite_states_file, np.hstack((x, np.vstack((u, [[np.nan]*4])))))
+    df['ddl'] = np.hstack((u[:, 3], [np.nan]))
+    df['dl'] = x[:, 7]
+    df['l'] = x[:, 3]
+    x_kite = np.delete(x, [3, 7], axis=1)
+    a_kite = np.delete(u, 3, axis=1)
 
     if make_kinematics_consistent:
         # Not just use the inferred acceleration, but also impose the corresponding position and velocity.

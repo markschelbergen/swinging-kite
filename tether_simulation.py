@@ -10,6 +10,7 @@ from utils import calc_cartesian_coords_enu, plot_vector, unravel_euler_angles, 
 from paul_williams_model import get_tether_end_position, plot_offaxial_tether_displacement
 from scipy.optimize import least_squares
 from turning_center import determine_rigid_body_rotation, mark_points
+from system_properties import l_bridle
 
 
 def run_helical_flight():
@@ -269,8 +270,6 @@ def run_simulation_with_fitted_acceleration(config=None, animate=False):
             'tether_slack0': .3,
             'use_measured_reelout_acceleration': False,
         }
-    tether_states_file = 'tether_states_rad.npy'
-
     from system_properties import vwx
     # Get tether model.
     n_tether_elements = 30
@@ -291,10 +290,9 @@ def run_simulation_with_fitted_acceleration(config=None, animate=False):
         dl0 = flight_data.loc[flight_data.index[0], 'ground_tether_reelout_speed']
         dl0 += .02
     else:
-        ddl = np.load(tether_states_file)[config['sim_interval'][0]:config['sim_interval'][1]-1, 2]
-        dl0 = np.load(tether_states_file)[config['sim_interval'][0], 1]
-
-    l0 = np.load(tether_states_file)[config['sim_interval'][0], 0] + config['tether_slack0']
+        ddl = flight_data['ddl'].iloc[:-1]
+        dl0 = flight_data['dl'].iloc[0]
+    l0 = flight_data['l'].iloc[0] - l_bridle + config['tether_slack0']
 
     # Set control input array for simulation.
     u = np.zeros((n_intervals, 4))
