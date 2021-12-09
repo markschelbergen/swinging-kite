@@ -854,7 +854,7 @@ if __name__ == "__main__":
     find_and_plot_tether_lengths(30)  #, config=config)
     # fit_reelout_acceleration_to_lengths(65)
     # find_and_plot_tether_lengths(100)
-    combine_results_of_different_analyses()
+    # combine_results_of_different_analyses()
     # sensitivity_study()
     # sensitivity_kcu()
     plt.show()
