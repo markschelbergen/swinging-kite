@@ -145,25 +145,25 @@ def get_tether_end_position(x, set_parameter, n_tether_elements, r_kite, omega, 
         ez_bridle = tensions[-1, :]/np.linalg.norm(tensions[-1, :])
         ey_bridle = np.cross(ez_bridle, va)/np.linalg.norm(np.cross(ez_bridle, va))
         ex_bridle = np.cross(ey_bridle, ez_bridle)
-        dcm_b2e = np.vstack(([ex_bridle], [ey_bridle], [ez_bridle])).T
+        dcm_b2w = np.vstack(([ex_bridle], [ey_bridle], [ez_bridle])).T
 
         ez_tether = tensions[-2, :]/np.linalg.norm(tensions[-2, :])
         ey_tether = np.cross(ez_tether, va)/np.linalg.norm(np.cross(ez_tether, va))
         ex_tether = np.cross(ey_tether, ez_tether)
-        dcm_t2e = np.vstack(([ex_tether], [ey_tether], [ez_tether])).T
+        dcm_t2w = np.vstack(([ex_tether], [ey_tether], [ez_tether])).T
 
         ez_f_aero = aerodynamic_force/np.linalg.norm(aerodynamic_force)
         ey_f_aero = np.cross(ez_f_aero, va)/np.linalg.norm(np.cross(ez_f_aero, va))
         ex_f_aero = np.cross(ey_f_aero, ez_f_aero)
-        dcm_fa2e = np.vstack(([ex_f_aero], [ey_f_aero], [ez_f_aero])).T
+        dcm_fa2w = np.vstack(([ex_f_aero], [ey_f_aero], [ez_f_aero])).T
 
         ez_tau = r_kite/np.linalg.norm(r_kite)
         ey_tau = np.cross(ez_tau, va)/np.linalg.norm(np.cross(ez_tau, va))
         ex_tau = np.cross(ey_tau, ez_tau)
-        dcm_tau2e = np.vstack(([ex_tau], [ey_tau], [ez_tau])).T
+        dcm_tau2w = np.vstack(([ex_tau], [ey_tau], [ez_tau])).T
 
-        return positions, stretched_tether_length, dcm_b2e, dcm_t2e, dcm_fa2e, \
-               dcm_tau2e, aerodynamic_force, va
+        return positions, stretched_tether_length, dcm_b2w, dcm_t2w, dcm_fa2w, \
+               dcm_tau2w, aerodynamic_force, va
     else:
         return positions[-1, :] - r_kite
 
@@ -383,7 +383,7 @@ def plot_tether_element_attitudes(flight_data, ypr_aero_force, ypr_bridle, ypr_t
         clr = ax_ypr[0].plot(flight_data.time, ypr_bridle[:, 1]*180./np.pi, label='Bridle')[0].get_color()
         if mark_instances is not None:
             ax_ypr[0].plot(flight_data.time[flight_data.index[mark_instances]], ypr_bridle[mark_instances, [1]*len(mark_instances)]*180./np.pi, 's', color=clr)
-        # ax_ypr[0].plot(flight_data.time, ypr_tether[:, 1]*180./np.pi, label='Tether')
+        ax_ypr[0].plot(flight_data.time, ypr_tether[:, 1]*180./np.pi, label='Tether')
     else:
         ax_ypr[0].plot(flight_data.time, ypr_bridle[:, 1]*180./np.pi, label='Tether')
     ax_ypr[0].set_ylabel("Pitch [deg]")
@@ -556,7 +556,7 @@ def plot_offaxial_tether_displacement(pos_tau, ax=None, ls='-', plot_rows=[0, 1]
     return ax
 
 
-def find_and_plot_tether_lengths(n_tether_elements=30, export_tether_lengths=False, i_cycle=None, ax=None, config=None, plot_interval=(29.9, 51.2)):
+def find_and_plot_tether_lengths(n_tether_elements=30, i_cycle=None, ax=None, config=None, plot_interval=(29.9, 51.2)):
     if config is None:
         config = {
             'n_tether_elements': n_tether_elements,
@@ -611,12 +611,7 @@ def find_and_plot_tether_lengths(n_tether_elements=30, export_tether_lengths=Fal
         # plot_tether_states(flight_data, strained_tether_lengths, tether_lengths,
         #                    fitted_tether_length_and_speed, fitted_tether_acceleration)
 
-        if export_tether_lengths:
-            np.save('tether_lengths.npy', tether_lengths)
-            # if config['separate_kcu_mass']:
-            #     np.save('ypr_bridle_rigid_body_rotation.npy', ypr_bridle)
-
-        if config['separate_kcu_mass'] and not config['elastic_elements']:
+        if config['separate_kcu_mass'] and not config['elastic_elements'] and i_cycle is None:
             res = {
                 'strained_tether_lengths': strained_tether_lengths,
                 'pitch_bridle': ypr_bridle[:, 1],
@@ -851,7 +846,7 @@ if __name__ == "__main__":
     #     'elastic_elements': True,
     #     'make_kinematics_consistent': False,
     # }
-    find_and_plot_tether_lengths(30)  #, config=config)
+    find_and_plot_tether_lengths(30, i_cycle=65)  #, config=config)
     # fit_reelout_acceleration_to_lengths(65)
     # find_and_plot_tether_lengths(100)
     # combine_results_of_different_analyses()
