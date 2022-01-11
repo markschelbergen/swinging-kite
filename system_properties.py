@@ -15,5 +15,4 @@ m_kcu = 16
 l_bridle = 11.5
 
 cd_kcu = 1.
-# frontal_area_kcu = 1.6
 frontal_area_kcu = .25
