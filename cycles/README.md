@@ -11,6 +11,8 @@ Each cycle consists of a traction phase where the kite flies figure of eight man
 
 The new flow measurement setup has been made more compact compared to earlier experiments. It still employs a Pitot tube to measure the relative flow velocity together with a single orthogonal wind vane to measure the flow angle parallel to the symmetry plane of the kite. For this specific flight test, the sideslip was not measured. The relative flow sensors are mounted off-center at the lower knot of the left power line. The pressure, temperature, position (GPS), and attitude (IMU) at the kite were measured by two Pixhawks, one on each of the center struts. Also the tether force, reel out speed, and wind speed/direction are measured at the ground station. The data was recorded at a frequency of 10 Hz.
 
+![V3 kite](kite.jpeg)
+
 ## Content of the data set
 
 The acquired data is provided in csv-format. In the content description we use the following abbreviations:
