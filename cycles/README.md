@@ -15,11 +15,11 @@ The new flow measurement setup has been made more compact compared to earlier ex
 
 ## Terms for using the data:
 - Kitepower shall get acknowledged each time the data is used. Acknowledgements must contain a link to www.kitepower.nl.
-- When a scientific publication that uses the data is pursued, a copy of the article including the data shall be sent via email to publications@kitepower.nl due to reviewing before submitting.
+- When a scientific publication that uses the data is pursued, the article needs to be reviewed and approved by Kitepower prior to submitting. Send the preprint together with the data via email to publications@kitepower.nl.
 - For other types of publications, e.g. via media outlets, Kitepower shall be informed prior publication including the data via email to publications@kitepower.nl.
 - Kitepower retains the right to post a preprint of the publication containing the data on kitepower.nl and/or Kitepower-related networks, if such public posting is in accordance with the agreement between author and publisher.
 - This data cannot be shared or re-published, only the publication of compiled data is granted.
-- Publications that use the data shall emphasize that the test flight does not represent the state-of-the-art of Kitepower's system as the test was focused on data acquisition rather than maximising energy production and Kitepower nowadays employs a much larger kite. 
+- Publications that use the data shall emphasize that the test flight does not represent the state-of-the-art of Kitepower as the system configuration was already dated at the time of the test and has gone through thorough development since then (e.g. Kitepower nowadays employs a much larger kite). Moreover, the test was focused on data acquisition rather than maximising energy production. 
 
 ## Content of the data set
 
