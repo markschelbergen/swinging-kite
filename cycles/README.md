@@ -13,13 +13,12 @@ The new flow measurement setup has been made more compact compared to earlier ex
 
 ![V3 kite](kite.jpeg)
 
-## Terms for using the data:
-- Kitepower shall get acknowledged each time the data is used. Acknowledgements must contain a link to www.kitepower.nl.
-- When a scientific publication that uses the data is pursued, the article needs to be reviewed and approved by Kitepower prior to submitting. Send the preprint together with the data via email to publications@kitepower.nl.
-- For other types of publications, e.g. via media outlets, Kitepower shall be informed prior publication including the data via email to publications@kitepower.nl.
-- Kitepower retains the right to post a preprint of the publication containing the data on kitepower.nl and/or Kitepower-related networks, if such public posting is in accordance with the agreement between author and publisher.
-- This data cannot be shared or re-published, only the publication of compiled data is granted.
-- Publications that use the data shall emphasize that the test flight does not represent the state-of-the-art of Kitepower as the system configuration was already dated at the time of the test and has gone through thorough development since then (e.g. Kitepower nowadays employs a much larger kite). Moreover, the test was focused on data acquisition rather than maximising energy production. 
+## Terms and requests considering using the data:
+- The contents of this repository are published under a CC-BY-NC-ND 4.0 license: the data can be used for non-commercial purposes as long as attribution is made to this repository.
+- When using the dataset acknowledge Kitepower and include a link to www.kitepower.nl.
+- Notify Kitepower when pursuing a publication that uses the data. Send the preprint including the data via email to publications@kitepower.nl.
+- Kitepower wishes to post the preprint of the publication containing the data on kitepower.nl and/or Kitepower-related networks, if such public posting is in accordance with the agreement between author and publisher.
+- Stress that the test flight does not represent the state-of-the-art of Kitepower as the system configuration was already dated at the time of the test and has gone through substantial development since then (e.g. Kitepower nowadays employs a much larger kite). Moreover, the test was focused on data acquisition rather than maximising energy production. 
 
 ## Content of the data set
 
@@ -73,8 +72,8 @@ The acquired data is provided in csv-format. In the content description we use t
 | 42 | kite_actual_depower         | Level of realized depower as percentage of the full range                                                                                                                   | %                |
 | 43 | kite_set_steering           | Set/desired value of steering actuation as percentage of the range in one direction                                                                                         | %                |
 | 44 | kite_set_depower            | Set/desired depower as percentage of the full range                                                                                                                         | %                |
-| 45 | ground_mech_energy          | Mechanical energy generated                                                                                                                                                 | J                |
-| 46 | ground_mech_power           | Mechanical power generated derivative of the energy?                                                                                                                        | W                |
+| 45 | ground_mech_energy          | Generated mechanical energy at winch since the start of the test flight                                                                                                     | J                |
+| 46 | ground_mech_power           | Mechanical power measured at the winch                                                                                                                                      | W                |
 | 47 | flight_phase                | Label of the active flight phase: pp-ro = reel-out/pp-ri = reel-in/pp-rori = reel-out to reel-in transition/pp-riro = reel-in to reel-out transition                        | -                |
 | 48 | flight_phase_index          | Index of the active flight phase: 1-4                                                                                                                                       | -                |
 | 49 | phase                       | Flight phase index after dividing the reel-in to reel-out transition and reel-out phase into two parts: 0-5                                                                 | -                |
@@ -91,12 +90,13 @@ The acquired data is provided in csv-format. In the content description we use t
 ## Authors
 
 Mark Schelbergen
+
 Roland Schmehl, Email: r.schmehl@tudelft.nl
 
 ## License
 
 This data set is licensed under the [![License: CC BY-NC-ND 4.0](https://img.shields.io/badge/License-CC%20BY--NC--ND%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-nd/4.0/)
 
-## Acknowledgments
+## Acknowledgements
 
 The authors are grateful to Kitepower B.V. ([http://kitepower.nl](http://kitepower.nl/)), in particular to Johannes Peschel, for opening up Kitepower's test flight data. 
