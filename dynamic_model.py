@@ -210,14 +210,3 @@ def dae_sim(tf, n_intervals, dyn):
     nu_sol = ca.vcat(nu_sol)
 
     return ca.Function('sim', [x0, u], [x_sol, nu_sol])
-
-
-
-
-if __name__ == "__main__":
-    run_simulation()
-    # static_state_analysis()
-    # quasi_steady_state_analysis_fixed_end()
-    # run_simulation_dae()
-    # run_simulation_skip_rope()
-    plt.show()

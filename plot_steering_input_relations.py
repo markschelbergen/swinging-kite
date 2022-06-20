@@ -24,21 +24,21 @@ def plot_relations():
     ax[1, 1].scatter(flight_data.kite_actual_steering, (flight_data.pitch0_tau-flight_data.pitch1_tau)*180./np.pi, s=.1)
     res = linregress(flight_data.kite_actual_steering, flight_data.pitch0_tau-flight_data.pitch1_tau)
     ax[1, 1].plot(x, res.slope*x*180./np.pi, '--', color='C1')  #(res.intercept + res.slope*x)
-    ax[1, 1].text(.55, .7, "R={:.2f}".format(res.rvalue), transform=ax[1, 1].transAxes)
+    ax[1, 1].text(.55, .7, "r={:.2f}".format(res.rvalue), transform=ax[1, 1].transAxes)
     ax[1, 0].plot(flight_data.time, flight_data.kite_actual_steering*res.slope*180./np.pi, '--', color='C1')
 
     ax[2, 0].plot(flight_data.time, flight_data.roll0_tau*180./np.pi)
     ax[2, 1].scatter(flight_data.kite_actual_steering, flight_data.roll0_tau*180./np.pi, s=.1)
     res = linregress(flight_data.kite_actual_steering, flight_data.roll0_tau)
     ax[2, 1].plot(x, res.slope*x*180./np.pi, '--', color='C1')
-    ax[2, 1].text(.55, .7, "R={:.2f}".format(res.rvalue), transform=ax[2, 1].transAxes)
+    ax[2, 1].text(.55, .7, "r={:.2f}".format(res.rvalue), transform=ax[2, 1].transAxes)
     ax[2, 0].plot(flight_data.time, flight_data.kite_actual_steering*res.slope*180./np.pi, '--', color='C1')
 
     ax[3, 0].plot(flight_data.time, flight_data.kite_1_yaw_rate*180./np.pi)
     ax[3, 1].scatter(flight_data.kite_actual_steering, flight_data.kite_1_yaw_rate*180./np.pi, s=.1)
     res = linregress(flight_data.kite_actual_steering, flight_data.kite_1_yaw_rate)
     ax[3, 1].plot(x, res.slope*x*180./np.pi, '--', color='C1')
-    ax[3, 1].text(.05, .7, "R={:.2f}".format(res.rvalue), transform=ax[3, 1].transAxes)
+    ax[3, 1].text(.05, .7, "r={:.2f}".format(res.rvalue), transform=ax[3, 1].transAxes)
     ax[3, 0].plot(flight_data.time, flight_data.kite_actual_steering*res.slope*180./np.pi, '--', color='C1')
 
     # ax[0].legend(bbox_to_anchor=(.15, 1.07, .7, .5), loc="lower left", mode="expand",

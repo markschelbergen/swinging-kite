@@ -10,8 +10,8 @@ cd_t = 1.1
 tether_modulus = 614600/(pi*.002**2)  # From Uwe's thesis
 tether_stiffness = tether_modulus*pi*(d_t/2)**2
 
-m_kite = 11
-m_kcu = 16
+m_kite = 14.2
+m_kcu = 25
 l_bridle = 11.5
 
 cd_kcu = 1.

@@ -173,10 +173,10 @@ def plot_estimated_turn_center(flight_data, animate=False, vwx=10):
             plot_apparent_wind_velocity(ax, row, vwx, .3, color='g', linestyle=':', label=lbl)
 
             az_tc, el_tc = row['azimuth_turn_center']*180./np.pi, row['elevation_turn_center']*180./np.pi
-            if np.isnan(az_tc):
-                marker = 's'
-            else:
-                marker = 'o'
+            # if np.isnan(az_tc):
+            marker = 's'
+            # else:
+            #     marker = 'o'
             ax.plot(az_tc, el_tc, marker, mfc="white", alpha=1, ms=6, mec='C{}'.format(j))
 
             az, el = row['kite_azimuth']*180./np.pi, row['kite_elevation']*180./np.pi
@@ -207,15 +207,15 @@ def visualize_estimated_rotation_vector(flight_data, animate=False):
     ax[0].set_ylabel('Rotational\nspeed [rad s$^{-1}$]')
     ax[0].legend(ncol=2)
 
-    ax[1].plot(flight_data.time, (flight_data.vx**2+flight_data.vy**2+flight_data.vz**2)**.5, color='C1', label='reconstructed', linewidth=2.5)
-    ax[1].plot(flight_data.time, (flight_data.kite_0_vx**2+flight_data.kite_0_vy**2+flight_data.kite_0_vz**2)**.5, ':', color='C2', label='flight data')
+    ax[1].plot(flight_data.time, (flight_data.vx**2+flight_data.vy**2+flight_data.vz**2)**.5, color='C1', label='Reconstructed', linewidth=2.5)
+    ax[1].plot(flight_data.time, (flight_data.kite_0_vx**2+flight_data.kite_0_vy**2+flight_data.kite_0_vz**2)**.5, ':', color='C2', label='Flight data')
     ax[1].plot(flight_data.time, (flight_data.vx_om**2+flight_data.vy_om**2+flight_data.vz_om**2)**.5, color='C3', linewidth=1)  #, label=r'$\omega_{\rm rb-gc/turn}$')
     ax[1].plot(flight_data.time, (flight_data.vx_om_opt**2+flight_data.vy_om_opt**2+flight_data.vz_om_opt**2)**.5, '--', color='C0')  #, label=r'$\omega_{\rm rb-opt}$')
     ax[1].set_ylabel('Canopy speed\n[m s$^{-1}$]')
     ax[1].legend(ncol=2)
 
-    ax[2].plot(flight_data.time, (flight_data.ax**2+flight_data.ay**2+flight_data.az**2)**.5, color='C1', label='reconstructed', linewidth=2.5)
-    ax[2].plot(flight_data.time, (flight_data.kite_1_ax**2+flight_data.kite_1_ay**2+flight_data.kite_1_az**2)**.5, ':', color='C2', label='flight data')
+    ax[2].plot(flight_data.time, (flight_data.ax**2+flight_data.ay**2+flight_data.az**2)**.5, color='C1', label='Reconstructed', linewidth=2.5)
+    ax[2].plot(flight_data.time, (flight_data.kite_1_ax**2+flight_data.kite_1_ay**2+flight_data.kite_1_az**2)**.5, ':', color='C2', label='Flight data')
     ax[2].plot(flight_data.time, (flight_data.ax_om**2+flight_data.ay_om**2+flight_data.az_om**2)**.5, color='C3', linewidth=1)
     ax[2].plot(flight_data.time, (flight_data.ax_om_opt**2+flight_data.ay_om_opt**2+flight_data.az_om_opt**2)**.5, '--', color='C0')
     ax[2].set_ylabel('Canopy\nacceleration [m s$^{-2}$]')

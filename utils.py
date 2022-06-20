@@ -247,6 +247,7 @@ def read_and_transform_flight_data(make_kinematics_consistent=True, i_cycle=None
         #         'est_upwind_direction', 'kite_pos_east', 'kite_pos_north', 'kite_height',
         #         'kite_elevation', 'kite_azimuth', 'kite_distance', 'kite_heading', 'kite_course', 'kite_actual_steering', 'kite_actual_depower']
         # df.to_csv("20191008_0065_fig8.csv", index=False, na_rep='nan', columns=cols)
+        df.kite_1_yaw_rate = -df.kite_1_yaw_rate
     else:
         file_name = '20191008_0065_fig8.csv'
         df = pd.read_csv(file_name)
@@ -261,8 +262,6 @@ def read_and_transform_flight_data(make_kinematics_consistent=True, i_cycle=None
     df['roll1'] = (df.kite_1_roll-8.5)*np.pi/180.
     df['pitch1'] = (-df.kite_1_pitch+7)*np.pi/180.
     df['yaw1'] = -(df.kite_1_yaw-90.)*np.pi/180.
-
-    # df.kite_1_yaw_rate = -df.kite_1_yaw_rate
 
     df.kite_azimuth = -df.kite_azimuth
     df.ground_tether_force = df.ground_tether_force * 9.81

@@ -89,7 +89,7 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
         'offaxial_tether_shape': pos_tau[plot_interval_irow[0]:plot_interval_irow[1]+1],
     }
     import pickle
-    with open("dynamic_results{}.pickle".format(dyn['n_tether_elements']), 'wb') as f:
+    with open("results/dynamic_results{}.pickle".format(dyn['n_tether_elements']), 'wb') as f:
         pickle.dump(res, f)
 
     return sol_x, sol_nu
