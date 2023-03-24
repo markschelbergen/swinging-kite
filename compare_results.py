@@ -45,12 +45,14 @@ def plot_offaxial_tether_displacement(pos_tau, ax=None, ls='-', plot_rows=[0, 1]
 def combine_results_of_different_analyses():
     flight_data = read_and_transform_flight_data()
 
-    fig, ax_ypr = plt.subplots(2, 1, sharex=True, figsize=[6.4, 4])
-    plt.subplots_adjust(top=0.85, bottom=0.135, left=0.16, right=0.99,)
+    fig, ax_ypr = plt.subplots(2, 1, sharex=True, figsize=[6.4, 4.5])
+    plt.subplots_adjust(top=0.78, bottom=0.135, left=0.16, right=0.99,)
     # plt.suptitle("3-2-1 Euler angles between tangential\nand bridle ref. frames")
     ax_ypr[0].set_ylabel("Pitch [$^\circ$]")
     ax_ypr[1].set_ylabel("Roll [$^\circ$]")
-    ax_ypr[1].set_xlabel("Time [s]")
+    ax_ypr[1].set_xlabel("Instance label [-]")
+    ax2 = ax_ypr[0].secondary_xaxis("top")
+    ax2.set_xlabel("Time [s]")
 
     n_tether_elements = [30, 1]
     linestyles = ['-', '--']
@@ -80,8 +82,10 @@ def combine_results_of_different_analyses():
     ax_ypr[1].plot(flight_data.time, flight_data.roll0_tau * 180. / np.pi, '-.', label='Sensor 0')
     ax_ypr[1].plot(flight_data.time, flight_data.roll1_tau * 180. / np.pi, '-.', label='Sensor 1')
 
-    ax_ypr[0].legend(bbox_to_anchor=(.15, 1.07, .7, .5), loc="lower left", mode="expand",
+    ax_ypr[0].legend(bbox_to_anchor=(.15, 1.4, .7, .5), loc="lower left", mode="expand",
                    borderaxespad=0, ncol=3)
+    for a in ax_ypr: a.set_xticks(flight_data['time'].iloc[mark_points])
+    ax_ypr[1].set_xticklabels([str(i+1) for i in range(len(mark_points))])
     for a in ax_ypr: a.grid()
     for a in ax_ypr: plot_flight_sections(a, flight_data)
     add_panel_labels(ax_ypr, .18)
