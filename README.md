@@ -45,6 +45,11 @@ python [file_name]
 ```
 in which [file_name] should be replaced by the file name of the script.
 
+## License
+
+This data set is licensed under the [![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
+
+
 ## References
 
 <a name="Williams">[1]</a> Paul Williams (2017). Cable Modeling Approximations for Rapid Simulation. Journal of Guidance Control and Dynamics, 40:7, 1779-1788. [10.2514/1.G002354](https://doi.org/10.2514/1.G002354)
