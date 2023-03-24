@@ -73,7 +73,7 @@ The acquired data is provided in csv-format. In the content description we use t
 | 34 | kite_pos_north              | Position of the kite north of the ground station                                                                                                                                                 | m                |
 | 35 | kite_height                 | Height of the kite with respect to the ground station                                                                                                                                            | m                |
 | 36 | kite_elevation              | Elevation angle of the kite with respect to the ground station                                                                                                                                   | rad              |
-| 37 | kite_azimuth                | Azimuth angle of the kite with respect to the ground station in the wind reference frame (see est_upwind_direction), clockwise positive when viewed from above                                   | rad              |
+| 37 | kite_azimuth                | Azimuth angle of the kite with respect to the ground station in the wind reference frame (see est_upwind_direction), clockwise positive when viewed from above                                   | rad              |esa
 | 38 | kite_distance               | Radial position of the kite with respect to the ground station                                                                                                                                   | m                |
 | 39 | kite_heading                | Angle between the axis pointing up and the kite x-axis projection onto the tangential plane, clockwise positive when looking from above the kite towards the origin                              | rad              |
 | 40 | kite_course                 | Angle between the axis pointing up and the kite velocity projection onto the tangential plane, clockwise positive when looking from above the kite towards the origin                            | rad              |
@@ -96,6 +96,8 @@ The acquired data is provided in csv-format. In the content description we use t
 <a name="Vlugt2013">[2]</a> Rolf van der Vlugt, Johannes Peschel, Roland Schmehl: "Design and Experimental Characterization of a Pumping Kite Power System". In: Uwe Ahrens, Moritz Diehl, Roland Schmehl (eds.) Airborne Wind Energy. Green Energy and Technology, chap. 23, pp. 403–425, Springer, Berlin Heidelberg, 2013. https://doi.org/10.1007/978-3-642-39965-7_23
 
 <a name="Salma2020">[3]</a> Volkan Salma, Felix Friedl, Roland Schmehl: "Improving reliability and safety of airborne wind energy systems". Wind Energy, 2020; 23: 340– 356. https://doi.org/10.1002/we.2433
+
+<a name="Roullier2020">[3]</a> Arthur Roullier: "Experimental analysis of a kite system’s dynamics". MSc Thesis, EPFL, 2020. https://doi:10.5281/zenodo.7752407
 
 ## Authors
 
