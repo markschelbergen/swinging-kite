@@ -160,5 +160,5 @@ if __name__ == "__main__":
         'tether_slack0': .3,
         'use_measured_reelout_acceleration': False,
     }
-    run_simulation_with_fitted_acceleration(config)  # Generates dynamic results and plots figure 8
+    run_simulation_with_fitted_acceleration(config)  # Generates dynamic results and plots figure 10
     plt.show()

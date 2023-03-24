@@ -236,6 +236,6 @@ if __name__ == "__main__":
     print("Min. and max. height: {:.2f} and {:.2f}".format(flight_data['rz'].min(), flight_data['rz'].max()))
     print("Start and height radial position: {:.2f} and {:.2f}".format(flight_data.iloc[0]['kite_distance'], flight_data.iloc[-1]['kite_distance']))
     determine_rigid_body_rotation(flight_data)
-    plot_estimated_turn_center(flight_data)  # Plots figure 2
-    visualize_estimated_rotation_vector(flight_data)  # Plots figure 4
+    plot_estimated_turn_center(flight_data)  # Plots figure 4
+    visualize_estimated_rotation_vector(flight_data)  # Plots figure 6
     show()

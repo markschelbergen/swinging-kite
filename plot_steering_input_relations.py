@@ -53,5 +53,5 @@ def plot_relations():
 
 
 if __name__ == "__main__":
-    plot_relations()  # Plots figure 9
+    plot_relations()  # Plots figure 11
     plt.show()

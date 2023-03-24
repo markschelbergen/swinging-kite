@@ -615,6 +615,6 @@ def plot_pitch_multi_cycles():
 
 if __name__ == "__main__":
     find_and_plot_tether_lengths(1)  # Generates results single element tether
-    find_and_plot_tether_lengths(30, plot_3d_tether_shapes=True)  # Generates results multi-element tether and plots figure 5
-    plot_pitch_multi_cycles()  # Plots figure 10
+    find_and_plot_tether_lengths(30, plot_3d_tether_shapes=True)  # Generates results multi-element tether and plots figure 7
+    plot_pitch_multi_cycles()  # Plots figure 12
     plt.show()

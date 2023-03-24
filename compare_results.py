@@ -95,5 +95,5 @@ def combine_results_of_different_analyses():
 
 
 if __name__ == "__main__":
-    combine_results_of_different_analyses()  # Plots figures 6 and 7
+    combine_results_of_different_analyses()  # Plots figures 8 and 9
     plt.show()
