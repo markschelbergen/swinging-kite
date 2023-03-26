@@ -4,6 +4,18 @@ import pandas as pd
 from flight_trajectory_reconstruction import find_acceleration_matching_kite_trajectory
 from os.path import isfile
 
+
+def calc_kite_front_wrt_projected_velocity(r_kite, v_kite, rm_wind2body):
+    ez_v = r_kite/np.linalg.norm(r_kite)
+    ey_v = np.cross(ez_v, v_kite)/np.linalg.norm(np.cross(ez_v, v_kite))
+    ex_v = np.cross(ey_v, ez_v)
+    rm_v2w_i = np.vstack(([ex_v], [ey_v], [ez_v])).T
+
+    exb_wind = rm_wind2body.T[:, 0]
+    exb_v = rm_v2w_i.T.dot(exb_wind)
+    return np.arctan2(exb_v[1], exb_v[0])
+
+
 def calc_cartesian_coords_enu(az, el, r):
     z = np.sin(el)*r
     r_xy = (r**2 - z**2)**.5
@@ -223,26 +235,19 @@ def read_and_transform_flight_data(make_kinematics_consistent=True, i_cycle=None
 
     if i_cycle is not None:
         yr, m, d = 2019, 10, 8
-        folder = '/home/mark/Projects/quasi-steady-model-sandbox/flight_data/cycles/{:d}{:02d}{:02d}v2/'.format(yr, m, d)
+        folder = 'cycles/'.format(yr, m, d)
         file_name = folder + '{:d}{:02d}{:02d}_{:04d}.csv'.format(yr, m, d, i_cycle)
         df = pd.read_csv(file_name)
 
-        try:
-            with open(folder + '20191008_{:04d}_rpy_v2.npy'.format(i_cycle), 'rb') as f:
-                rpy = np.load(f)
-                df['roll'] = rpy[:, 0]*180./np.pi
-                df['pitch'] = -rpy[:, 1]*180./np.pi
-                df['yaw'] = -rpy[:, 2]*180./np.pi + 90
-        except FileNotFoundError:
-            df['roll'], df['pitch'], df['yaw'] = np.nan, np.nan, np.nan
         df['time'] = df['time'] - df['time'].iloc[0]
         # df = df[299:513]
         #
         # cols = ['time', 'date', 'time_of_day', 'kite_0_vx', 'kite_0_vy', 'kite_0_vz', 'kite_1_ax', 'kite_1_ay', 'kite_1_az',
         #         'kite_0_roll', 'kite_0_pitch', 'kite_0_yaw', 'kite_1_roll', 'kite_1_pitch', 'kite_1_yaw', 'ground_tether_reelout_speed', 'ground_tether_force',
         #         'est_upwind_direction', 'kite_pos_east', 'kite_pos_north', 'kite_height',
-        #         'kite_elevation', 'kite_azimuth', 'kite_distance', 'kite_heading', 'kite_course', 'kite_actual_steering', 'roll', 'pitch', 'yaw', 'kite_actual_depower']
+        #         'kite_elevation', 'kite_azimuth', 'kite_distance', 'kite_heading', 'kite_course', 'kite_actual_steering', 'kite_actual_depower']
         # df.to_csv("20191008_0065_fig8.csv", index=False, na_rep='nan', columns=cols)
+        df.kite_1_yaw_rate = -df.kite_1_yaw_rate
     else:
         file_name = '20191008_0065_fig8.csv'
         df = pd.read_csv(file_name)
@@ -250,10 +255,6 @@ def read_and_transform_flight_data(make_kinematics_consistent=True, i_cycle=None
     df = df.interpolate()
 
     # Lower only used for aero force decomposition
-    df['roll'] = df.roll*np.pi/180.
-    df['pitch'] = -df.pitch*np.pi/180.
-    df['yaw'] = -(df.yaw-90.)*np.pi/180.
-
     df['roll0'] = (df.kite_0_roll-8.5)*np.pi/180.
     df['pitch0'] = (-df.kite_0_pitch+7)*np.pi/180.
     df['yaw0'] = -(df.kite_0_yaw-90.)*np.pi/180.
@@ -262,14 +263,11 @@ def read_and_transform_flight_data(make_kinematics_consistent=True, i_cycle=None
     df['pitch1'] = (-df.kite_1_pitch+7)*np.pi/180.
     df['yaw1'] = -(df.kite_1_yaw-90.)*np.pi/180.
 
-    # df.kite_1_yaw_rate = -df.kite_1_yaw_rate
-
     df.kite_azimuth = -df.kite_azimuth
     df.ground_tether_force = df.ground_tether_force * 9.81
 
     find_turns_for_rolling_window(df)
 
-    df['roll_tau'], df['pitch_tau'], df['yaw_tau'] = calc_rpy_bridle_wrt_tangential_plane(df, rpy_cols=['roll', 'pitch', 'yaw'])
     df['roll0_tau'], df['pitch0_tau'], df['yaw0_tau'] = calc_rpy_bridle_wrt_tangential_plane(df, rpy_cols=['roll0', 'pitch0', 'yaw0'])
     df['roll1_tau'], df['pitch1_tau'], df['yaw1_tau'] = calc_rpy_bridle_wrt_tangential_plane(df, rpy_cols=['roll1', 'pitch1', 'yaw1'])
 
@@ -284,15 +282,16 @@ def read_and_transform_flight_data(make_kinematics_consistent=True, i_cycle=None
     df['kite_1_ax'], df['kite_1_ay'] = tranform_to_wind_rf(df['kite_1_ay'], df['kite_1_ax'], phi_upwind_direction)
 
     if i_cycle is None:
-        kite_states_file = 'kite_states_cycle65.npy'
+        kite_states_file = 'results/kite_states_cycle65.npy'
+        if not isfile(kite_states_file):
+            read_and_transform_flight_data(False, 65)
         x, u = np.load(kite_states_file)[299:513, :8], np.load(kite_states_file)[299:513-1, 8:]
     else:
-        kite_states_file = 'kite_states_cycle{}.npy'.format(i_cycle)
-        if isfile(kite_states_file):
-            x, u = np.load(kite_states_file)[:, :8], np.load(kite_states_file)[:-1, 8:]
-        else:
+        kite_states_file = 'results/kite_states_cycle{}.npy'.format(i_cycle)
+        if not isfile(kite_states_file):
             x, u = find_acceleration_matching_kite_trajectory(df)
             np.save(kite_states_file, np.hstack((x, np.vstack((u, [[np.nan]*4])))))
+        x, u = np.load(kite_states_file)[:, :8], np.load(kite_states_file)[:-1, 8:]
     df['ddl'] = np.hstack((u[:, 3], [np.nan]))
     df['dl'] = x[:, 7]
     df['l'] = x[:, 3]
@@ -363,5 +362,5 @@ def get_pitch_nose_down_angle_v3(u_p):
     return pitch
 
 
-if __name__ == "__main__":
-    print(get_pitch_nose_down_angle_v3(.78)*180./np.pi)
+# if __name__ == "__main__":
+#     read_and_transform_flight_data(make_kinematics_consistent=False, i_cycle=65)

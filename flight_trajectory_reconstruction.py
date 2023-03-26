@@ -89,76 +89,6 @@ def apply_low_pass_filter(data, cutoff_freq=.3, fillna=True):
     return filtered_data
 
 
-def plot_kinematics():
-    import matplotlib.pyplot as plt
-    from utils import read_and_transform_flight_data, add_panel_labels, plot_flight_sections2
-
-    flight_data_raw = read_and_transform_flight_data(False, 65)  # Read flight data.
-    flight_data_rec = read_and_transform_flight_data(True, 65)  # Read flight data.
-
-    r = np.sum(flight_data_raw[['rx', 'ry', 'rz']].values**2, axis=1)**.5
-    r_c = np.sum(flight_data_rec[['rx', 'ry', 'rz']].values**2, axis=1)**.5
-
-    radial_speed = np.sum(flight_data_raw[['rx', 'ry', 'rz']].values*flight_data_raw[['vx', 'vy', 'vz']].values, axis=1)/r
-    radial_speed_c = np.sum(flight_data_rec[['rx', 'ry', 'rz']].values*flight_data_rec[['vx', 'vy', 'vz']].values, axis=1)/r_c
-
-    fig, ax = plt.subplots(4, 2, sharex=True, figsize=(7.2, 6))
-    plt.subplots_adjust(left=.13, bottom=.09, right=.99, top=.94, wspace=.26, hspace=.15)
-    ax[0, 0].set_title('Position [m]')
-    ax[0, 1].set_title('Velocity [m/s]')
-    ax[0, 0].set_ylabel('x')
-    ax[1, 0].set_ylabel('y')
-    ax[2, 0].set_ylabel('z')
-    ax[3, 0].set_ylabel('r')
-    ax[-1, 0].set_xlabel('Time [s]')
-    ax[-1, 1].set_xlabel('Time [s]')
-
-    ax[0, 0].plot(flight_data_raw.time, flight_data_raw.rx, label='flight data')
-    ax[0, 0].plot(flight_data_rec.time, flight_data_rec.rx, '--', label='reconstructed')
-    ax[0, 0].legend()
-    ax[1, 0].plot(flight_data_raw.time, flight_data_raw.ry)
-    ax[1, 0].plot(flight_data_rec.time, flight_data_rec.ry, '--')
-    ax[2, 0].plot(flight_data_raw.time, flight_data_raw.rz)
-    ax[2, 0].plot(flight_data_rec.time, flight_data_rec.rz, '--')
-
-    ax[0, 1].plot(flight_data_raw.time, flight_data_raw.vx)
-    # ax[0, 1].plot(flight_data_raw.time[:-1], np.diff(flight_data_raw.rx)/.1, '--')
-    ax[0, 1].plot(flight_data_rec.time, flight_data_rec.vx, '--')
-    ax[1, 1].plot(flight_data_raw.time, flight_data_raw.vy)
-    # ax[1, 1].plot(flight_data_raw.time[:-1], np.diff(flight_data_raw.ry)/.1, '--')
-    ax[1, 1].plot(flight_data_rec.time, flight_data_rec.vy, '--')
-    ax[2, 1].plot(flight_data_raw.time, flight_data_raw.vz)
-    # ax[2, 1].plot(flight_data_raw.time[:-1], np.diff(flight_data_raw.rz)/.1, '--')
-    ax[2, 1].plot(flight_data_rec.time, flight_data_rec.vz, '--')
-
-    ax[3, 0].plot(flight_data_raw.time, r)
-    ax[3, 0].plot(flight_data_rec.time, r, '--')
-    # ax[3, 0].plot(flight_data_raw.time, flight_data_raw.rr, '-.')
-
-    drdt = apply_low_pass_filter(np.diff(r), cutoff_freq=1, fillna=False)/.1
-    ax[3, 1].plot(flight_data_raw.time[:-1], drdt, label='$\hat{\dot{r}}$')
-    ax[3, 1].plot(flight_data_raw.time, radial_speed, color='r', label=r'$\hat{v}_\mathrm{r}$', linewidth=.7)
-    ax[3, 1].plot(flight_data_raw.time, radial_speed_c, '--', color='C1')
-    ax[3, 1].plot(flight_data_raw.time, flight_data_raw.ground_tether_reelout_speed, 'k:', label='$\hat{\dot{l}}_\mathrm{t}$')
-    ax[3, 1].legend(ncol=3)
-
-    plot_flight_sections2(ax, flight_data_raw, False)
-    ax[0, 0].set_xlim([flight_data_raw['time'].iloc[0], flight_data_raw['time'].iloc[-1]])
-    add_panel_labels(ax, [.33, .22])
-
-    fig, ax = plt.subplots(4, 1, sharex=True, figsize=(6.4, 4.8))
-    ax[0].plot(flight_data_raw.time, flight_data_raw.kite_1_ax, linewidth=.5)
-    ax[0].plot(flight_data_raw.time, flight_data_raw.ax)
-    ax[1].plot(flight_data_raw.time, flight_data_raw.kite_1_ay, linewidth=.5)
-    ax[1].plot(flight_data_raw.time, flight_data_raw.ay)
-    ax[2].plot(flight_data_raw.time, flight_data_raw.kite_1_az, linewidth=.5)
-    ax[2].plot(flight_data_raw.time, flight_data_raw.az)
-    ax[3].plot(flight_data_raw.time, flight_data_raw.ddl)
-
-    plot_flight_sections2(ax, flight_data_raw, False)
-    plt.show()
-
-
 def plot_reconstruction():
     from scipy.integrate import cumtrapz
     import matplotlib.pyplot as plt
@@ -207,5 +137,4 @@ def plot_reconstruction():
 
 
 if __name__ == "__main__":
-    # plot_kinematics()
-    plot_reconstruction()
+    plot_reconstruction()  # Plots figure A1
