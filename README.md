@@ -25,7 +25,7 @@ conda activate [env_name]
 ```
 in which [env_name] should be replaced by the chosen name (previously ```source activate [env_name]```).
 
-All the required Python packages (listed in requirements.yml) are installed when creating the environment. Make sure that the new environment is active every time you run any of the Python scripts.
+All the required Python packages (listed in requirements.yml) are installed when creating the environment. Make sure that the new environment is active every time you run any of the Python scripts. Additionally, [environment_linux-64.yml](environment_linux-64.yml) is included which lists all dependencies explicitly including version and build numbers. 
 
 ## Running the simulations and plotting the results
 The [time_invariant_model.py](time_invariant_model.py) and [dynamic_simulation.py](dynamic_simulation.py) scripts output files in the [results](results) directory that are input to [compare_results.py](compare_results.py). Therefore, these scripts should be executed prior to generating the plots that compare the simulation results of the two models. The table below lists the scripts that need to be executed to generate the figures of the paper.
