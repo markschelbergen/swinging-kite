@@ -241,7 +241,7 @@ def read_and_transform_flight_data(make_kinematics_consistent=True, i_cycle=None
 
         df['time'] = df['time'] - df['time'].iloc[0]
         # df = df[299:513]
-        #
+
         # cols = ['time', 'date', 'time_of_day', 'kite_0_vx', 'kite_0_vy', 'kite_0_vz', 'kite_1_ax', 'kite_1_ay', 'kite_1_az',
         #         'kite_0_roll', 'kite_0_pitch', 'kite_0_yaw', 'kite_1_roll', 'kite_1_pitch', 'kite_1_yaw', 'ground_tether_reelout_speed', 'ground_tether_force',
         #         'est_upwind_direction', 'kite_pos_east', 'kite_pos_north', 'kite_height',
@@ -254,7 +254,6 @@ def read_and_transform_flight_data(make_kinematics_consistent=True, i_cycle=None
     df['time'] = df['time'].round(1)
     df = df.interpolate()
 
-    # Lower only used for aero force decomposition
     df['roll0'] = (df.kite_0_roll-8.5)*np.pi/180.
     df['pitch0'] = (-df.kite_0_pitch+7)*np.pi/180.
     df['yaw0'] = -(df.kite_0_yaw-90.)*np.pi/180.
@@ -281,7 +280,7 @@ def read_and_transform_flight_data(make_kinematics_consistent=True, i_cycle=None
     df[['kite_0_vx', 'kite_0_vy', 'kite_0_vz']] = df[['vx', 'vy', 'vz']].copy()
     df['kite_1_ax'], df['kite_1_ay'] = tranform_to_wind_rf(df['kite_1_ay'], df['kite_1_ax'], phi_upwind_direction)
 
-    if i_cycle is None:
+    if i_cycle is None:  # Figure-of-eight analysis requires trajectory reconstruction of cycle 65.
         kite_states_file = 'results/kite_states_cycle65.npy'
         if not isfile(kite_states_file):
             read_and_transform_flight_data(False, 65)
@@ -362,5 +361,5 @@ def get_pitch_nose_down_angle_v3(u_p):
     return pitch
 
 
-# if __name__ == "__main__":
-#     read_and_transform_flight_data(make_kinematics_consistent=False, i_cycle=65)
+if __name__ == "__main__":
+    read_and_transform_flight_data(make_kinematics_consistent=False, i_cycle=65)

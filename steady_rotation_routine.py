@@ -16,8 +16,19 @@ def plot_vector(p0, v, ax, scale_vector=.03, color='g', label=None):
     ax.plot3D(vector[0], vector[1], vector[2], color=color, label=label)
 
 
-def get_tether_end_position(x, set_parameter, n_tether_elements, r_kite, omega, separate_kcu_mass=False, elastic_elements=True, ax_plot_forces=False, return_values=False, find_force=False):
-    # Currently neglecting radial velocity of kite.
+def get_tether_end_position(x, config):
+    set_parameter = config['set_parameter']
+    n_tether_elements = config['n_tether_elements']
+    r_kite = config['r_kite']
+    omega = config['omega']
+    v_kite_radial = config.get('v_kite_radial', 0)
+    separate_kcu_mass = config.get('separate_kcu_mass', False)
+    elastic_elements = config.get('elastic_elements', True)
+    ax_plot_forces = config.get('ax_plot_forces', False)
+    return_values = config.get('return_values', False)
+    find_force = config.get('find_force', False)
+    drag_perpendicular = config.get('drag_perpendicular', False)
+
     if find_force:
         beta_n, phi_n, tension_ground = x
         tether_length = set_parameter
@@ -57,21 +68,21 @@ def get_tether_end_position(x, set_parameter, n_tether_elements, r_kite, omega, 
         kcu_element = separate_kcu_mass and j == n_elements - 2
 
         # Determine kinematics at point mass j.
-        vj = np.cross(omega, positions[j+1, :])
+        vj = np.cross(omega, positions[j+1, :]) + v_kite_radial
         velocities[j+1, :] = vj
-        aj = np.cross(omega, vj)
+        aj = np.cross(omega, np.cross(omega, positions[j+1, :]))
         accelerations[j+1, :] = aj
-        delta_p = positions[j+1, :] - positions[j, :]
-        ej = delta_p/np.linalg.norm(delta_p)  # Axial direction of tether element
 
         # Determine flow at point mass j.
         vaj = vj - np.array([vwx, 0, 0])  # Apparent wind velocity
-        vajp = np.dot(vaj, ej)*ej  # Parallel to tether element
-        # TODO: check whether to use vajn
-        vajn = vaj - vajp  # Perpendicular to tether element
-
-        vaj_sq = np.linalg.norm(vaj)*vaj
-        # vaj_sq = np.linalg.norm(vajn)*vajn
+        if not drag_perpendicular:
+            vaj_sq = np.linalg.norm(vaj)*vaj
+        else:
+            delta_p = positions[j+1, :] - positions[j, :]
+            ej = delta_p / np.linalg.norm(delta_p)  # Axial direction of tether element
+            vajp = np.dot(vaj, ej) * ej  # Parallel to tether element
+            vajn = vaj - vajp  # Perpendicular to tether element
+            vaj_sq = np.linalg.norm(vajn)*vajn
         tether_drag_basis = rho*l_unstrained*d_t*cd_t*vaj_sq
 
         # Determine drag at point mass j.
@@ -119,11 +130,17 @@ def get_tether_end_position(x, set_parameter, n_tether_elements, r_kite, omega, 
 
         if ax_plot_forces and not last_element:
             forces = [point_mass*aj, dj, fgj, -tensions[j, :], next_tension]
-            labels = ['resultant', 'drag', 'weight', 'last tension', 'next tension']
+            labels = ['resultant', 'drag', 'weight']  #, 'last tension', 'next tension']
             clrs = ['m', 'r', 'k', 'g', 'b']
             for f, lbl, clr in zip(forces, labels, clrs):
                 # print("{} = {:.2f} N".format(lbl, np.linalg.norm(f)))
-                plot_vector(positions[j+1, :], f, ax_plot_forces, color=clr)
+                plot_vector(positions[j+1, :], f*50, ax_plot_forces, color=clr)
+        elif ax_plot_forces:
+            ax_plot_forces.set_xlim([0, 300])
+            ax_plot_forces.set_ylim([-150, 150])
+            ax_plot_forces.set_zlim([0, 300])
+            ax_plot_forces.set_box_aspect([1.0, 1.0, 1.0])
+            ax_plot_forces.plot(positions[:, 0], positions[:, 1], positions[:, 2])
 
         # Derive position of next point mass from former tension
         if kcu_element:
@@ -167,27 +184,27 @@ def get_tether_end_position(x, set_parameter, n_tether_elements, r_kite, omega, 
         return positions[-1, :] - r_kite
 
 
-def find_tether_length():
-    from scipy.optimize import least_squares
-
-    args = (1000, 10, [200, 0, 100], [2, 20, 1], [0, 0, 0])
-    opt_res = least_squares(get_tether_end_position, (20 * np.pi / 180., -15 * np.pi / 180., 250), args=args, verbose=2)
-    print("Resulting tether length:", opt_res.x[2])
-    p = get_tether_end_position(opt_res.x, *args, return_values=True)[0]
-
-    plt.figure(figsize=(8, 6))
-    ax3d = plt.axes(projection='3d')
-
-    ax3d.plot(p[:, 0], p[:, 1], p[:, 2], '-s')
-    ax3d.set_xlabel("x [m]")
-    ax3d.set_ylabel("y [m]")
-    ax3d.set_zlabel("z [m]")
-
-    ax3d.set_xlim([0, 250])
-    ax3d.set_ylim([-125, 125])
-    ax3d.set_zlim([0, 250])
-
-    plt.show()
+# def find_tether_length():
+#     from scipy.optimize import least_squares
+#
+#     args = (1000, 10, [200, 0, 100], [2, 20, 1], [0, 0, 0])
+#     opt_res = least_squares(get_tether_end_position, (20 * np.pi / 180., -15 * np.pi / 180., 250), args=args, verbose=2)
+#     print("Resulting tether length:", opt_res.x[2])
+#     p = get_tether_end_position(opt_res.x, *args, return_values=True)[0]
+#
+#     plt.figure(figsize=(8, 6))
+#     ax3d = plt.axes(projection='3d')
+#
+#     ax3d.plot(p[:, 0], p[:, 1], p[:, 2], '-s')
+#     ax3d.set_xlabel("x [m]")
+#     ax3d.set_ylabel("y [m]")
+#     ax3d.set_zlabel("z [m]")
+#
+#     ax3d.set_xlim([0, 250])
+#     ax3d.set_ylim([-125, 125])
+#     ax3d.set_zlim([0, 250])
+#
+#     plt.show()
 
 
 def find_tether_lengths(flight_data, config, plot=False, plot_instances=mark_points):
@@ -240,14 +257,25 @@ def find_tether_lengths(flight_data, config, plot=False, plot_instances=mark_poi
         # Find consistent tether shape
         r_kite = np.array(list(row[['rx', 'ry', 'rz']]))
         v_kite = np.array(list(row[['vx', 'vy', 'vz']]))
-        args = (row['ground_tether_force'], config['n_tether_elements'], r_kite,
-                list(row[['omx_opt', 'omy_opt', 'omz_opt']]),
-                config['separate_kcu_mass'], config['elastic_elements'])
-        opt_res = least_squares(get_tether_end_position, list(row[['kite_elevation', 'kite_azimuth', 'kite_distance']]), args=args, verbose=0)
+        gtep_config = {
+            'set_parameter': row['ground_tether_force'],
+            'n_tether_elements': config['n_tether_elements'],
+            'r_kite': r_kite,
+            'v_kite_radial': np.dot(v_kite, r_kite)/np.linalg.norm(r_kite)**2 * r_kite,
+            'omega': list(row[['omx_opt', 'omy_opt', 'omz_opt']]),
+            'separate_kcu_mass': config['separate_kcu_mass'],
+            'elastic_elements': config['elastic_elements'],
+            'drag_perpendicular': True,
+        }
+        opt_res = least_squares(get_tether_end_position, list(row[['kite_elevation', 'kite_azimuth', 'kite_distance']]), args=(gtep_config,), verbose=0)
         if not opt_res.success:
             print("Optimization {} failed!".format(i))
         tether_lengths.append(opt_res.x[2])
-        pos_e, l_strained, dcm_b2w_i, dcm_t2w_i, dcm_fa2w_i, dcm_tau2w_i, f_aero, v_app = get_tether_end_position(opt_res.x, *args, return_values=True)
+        gtep_config['return_values'] = True
+        # fig = plt.figure()
+        # ax = plt.axes(projection='3d')
+        # gtep_config['ax_plot_forces'] = ax
+        pos_e, l_strained, dcm_b2w_i, dcm_t2w_i, dcm_fa2w_i, dcm_tau2w_i, f_aero, v_app = get_tether_end_position(opt_res.x, gtep_config)
         strained_tether_lengths.append(l_strained)
 
         ez_tau_vk = r_kite/np.linalg.norm(r_kite)
@@ -344,7 +372,7 @@ def plot_tether_element_pitch(flight_data, ypr_bridle, ax):
     ax.grid()
     ax.plot(flight_data.time, flight_data.pitch0_tau * 180. / np.pi, label='Sensor 0')
     ax.plot(flight_data.time, flight_data.pitch1_tau * 180. / np.pi, label='Sensor 1')
-    ax.plot(flight_data.time, ypr_bridle[:, 1]*180./np.pi, label='T-I N=30')
+    ax.plot(flight_data.time, ypr_bridle[:, 1]*180./np.pi, label='Steady-rotation N=30')
     ax.set_xlim([flight_data.iloc[0]['time'], flight_data.iloc[-1]['time']])
     plot_flight_sections(ax, flight_data)
 
@@ -608,7 +636,7 @@ def plot_pitch_multi_cycles():
     for ic, a in zip(list(range(65, 75)), ax.reshape(-1)):
         find_and_plot_tether_lengths(30, i_cycle=ic, ax=a)
         a.text(.05, .75, "Cycle {}".format(ic), transform=a.transAxes)
-    ax[0, 0].legend(bbox_to_anchor=(.4, 1.07, 1.2+wspace, .5), loc="lower left", mode="expand",
+    ax[0, 0].legend(bbox_to_anchor=(.2, 1.07, 1.6+wspace, .5), loc="lower left", mode="expand",
                        borderaxespad=0, ncol=3)
     plt.show()
 
@@ -616,5 +644,5 @@ def plot_pitch_multi_cycles():
 if __name__ == "__main__":
     find_and_plot_tether_lengths(1)  # Generates results single element tether
     find_and_plot_tether_lengths(30, plot_3d_tether_shapes=True)  # Generates results multi-element tether and plots figure 7
-    plot_pitch_multi_cycles()  # Plots figure 12
+    # plot_pitch_multi_cycles()  # Plots figure 12
     plt.show()

@@ -72,6 +72,78 @@ def find_acceleration_matching_kite_trajectory(df, solver='idas'):
     return states_sol, controls_sol
 
 
+# def setup_integrator_kinematic_model(tf, solver='idas'):
+#     # ODE for kinematic model
+#     r = ca.SX.sym('r', 3)
+#     v = ca.SX.sym('v', 3)
+#     x = ca.vertcat(r, v)
+#     a = ca.SX.sym('a', 3)
+#     dx = ca.vertcat(v, a)
+#
+#     # Create an integrator
+#     ode = {'x': x, 'ode': dx, 'p': a}
+#
+#     intg = ca.integrator('intg', solver, ode, {'tf': tf})
+#     return intg
+#
+#
+# def find_acceleration_matching_kite_trajectory(df, solver='idas'):
+#     n_intervals = df.shape[0]-1
+#     tf = .1
+#
+#     intg = setup_integrator_kinematic_model(tf, solver)
+#
+#     opti = ca.casadi.Opti()
+#
+#     # Decision variables for states
+#     states = opti.variable(n_intervals+1, 6)
+#     # Decision variables for control vector
+#     controls = opti.variable(n_intervals, 3)
+#
+#     # Gap-closing shooting constraints
+#     for k in range(n_intervals):
+#         res = intg(x0=states[k, :], p=controls[k, :])
+#         opti.subject_to(states[k+1, :].T == res["xf"])
+#
+#     # Initial guesses
+#     mea_pos = df[['rx', 'ry', 'rz']].values
+#     opti.set_initial(states[:, :3], mea_pos)
+#     # opti.set_initial(states[:, 3], df.kite_distance.values)
+#     mea_speed = df[['vx', 'vy', 'vz']].values
+#     opti.set_initial(states[:, 3:6], mea_speed)
+#     # opti.set_initial(states[:, 7], df.ground_tether_reelout_speed.values)
+#
+#     accelerations = df[['kite_1_ax', 'kite_1_ay', 'kite_1_az']].values
+#     opti.set_initial(controls[:, :3], accelerations[:-1, :3])
+#
+#     # opti.subject_to(ca.sum2(states[:, :3]**2)**.5 == states[:, 3])
+#     obj = ca.sumsqr(states[:, :3] - mea_pos)
+#
+#     weight_radial_speed = 5
+#     for i, dl_mea in enumerate(df.ground_tether_reelout_speed.values):
+#         l = ca.norm_2(states[i, :3])
+#         dl = ca.dot(states[i, :3], states[i, 3:6]) / l
+#         obj += ca.sumsqr(weight_radial_speed*(dl - dl_mea))
+#
+#     weight_control_steps = 1/25
+#     control_steps = controls[1:, :3]-controls[:-1, :3]
+#     obj += ca.sumsqr(weight_control_steps*control_steps)
+#     opti.minimize(obj)
+#
+#     opti.subject_to(opti.bounded(-3, control_steps, 3))
+#
+#     # solve optimization problem
+#     opti.solver('ipopt', {'ipopt':  {'max_iter': 50}})
+#
+#     sol = opti.solve()
+#     get_values = sol.value
+#
+#     states_sol = get_values(states)
+#     controls_sol = get_values(controls)
+#
+#     return states_sol, controls_sol
+
+
 def apply_low_pass_filter(data, cutoff_freq=.3, fillna=True):
     from scipy.signal import butter, filtfilt
     fs = 10.0       # sample rate, Hz

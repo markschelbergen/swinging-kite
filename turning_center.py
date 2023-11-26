@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.optimize import least_squares
-from utils import add_panel_labels, rotation_matrix_earth2sphere, plot_vector_2d
+from utils import add_panel_labels, rotation_matrix_earth2sphere, plot_vector_2d, rotation_matrix_earth2body, get_pitch_nose_down_angle_v3, calc_spherical_coords
 
 
 def circle_residuals(c, x, y):
@@ -48,7 +48,7 @@ def rigid_body_rotation_errors(omega, r_kite, v_kite, a_kite):
 
 
 def determine_rigid_body_rotation(flight_data):
-    omega_first_principle = np.empty((flight_data.shape[0], 3))
+    omega_great_circle = np.empty((flight_data.shape[0], 3))
     omega_optimized = np.empty((flight_data.shape[0], 3))
     omega_magnitude = np.empty(flight_data.shape[0])
 
@@ -84,7 +84,7 @@ def determine_rigid_body_rotation(flight_data):
             om_opt = least_squares(rigid_body_rotation_errors, om, args=(r_kite, v_kite, a_kite), verbose=0).x
             omega_magnitude[i] = np.linalg.norm(om)
 
-        omega_first_principle[i, :] = om
+        omega_great_circle[i, :] = om
         omega_optimized[i, :] = om_opt
 
         v_om_opt = np.cross(om_opt, r_kite)
@@ -97,9 +97,9 @@ def determine_rigid_body_rotation(flight_data):
         a_om = np.cross(om, v_om)
         a_kite_om[i] = a_om
 
-    flight_data['omx'] = omega_first_principle[:, 0]
-    flight_data['omy'] = omega_first_principle[:, 1]
-    flight_data['omz'] = omega_first_principle[:, 2]
+    flight_data['omx'] = omega_great_circle[:, 0]
+    flight_data['omy'] = omega_great_circle[:, 1]
+    flight_data['omz'] = omega_great_circle[:, 2]
     flight_data['omx_opt'] = omega_optimized[:, 0]
     flight_data['omy_opt'] = omega_optimized[:, 1]
     flight_data['omz_opt'] = omega_optimized[:, 2]
@@ -133,6 +133,14 @@ def plot_apparent_wind_velocity(ax, row, vwx, scale_vector=1, **kwargs):
                    **kwargs)
 
 
+def plot_heading(ax, row, sensor=0, scale_vector=1, **kwargs):
+    r_sb = rotation_matrix_earth2body(row[f'roll{sensor}_tau'], row[f'pitch{sensor}_tau'], row[f'yaw{sensor}_tau']).T
+    ex_s = r_sb.dot(np.array([1, 0, 0]))
+    vec_proj = np.array([ex_s[1], -ex_s[0]])
+    plot_vector_2d([row['kite_azimuth'] * 180. / np.pi, row['kite_elevation'] * 180. / np.pi], vec_proj, ax,
+                   scale_vector, **kwargs)
+
+
 def plot_estimated_turn_center(flight_data, animate=False, vwx=10):
     import matplotlib.pyplot as plt
     ax = plt.figure(figsize=[5.8, 3]).gca()
@@ -161,16 +169,19 @@ def plot_estimated_turn_center(flight_data, animate=False, vwx=10):
         ax.plot(np.where(~flight_data['flag_turn'], az, np.nan), np.where(~flight_data['flag_turn'], el, np.nan), color='C0', label='Straight')
         ax.plot(np.where(flight_data['flag_turn'], az, np.nan), np.where(flight_data['flag_turn'], el, np.nan), '--', color='C0', label='Turn')
 
-        ax.plot(flight_data['azimuth_turn_center']*180./np.pi, flight_data['elevation_turn_center']*180./np.pi, linewidth=.8, color='grey', label='Turn center')
+        ax.plot(flight_data['azimuth_turn_center']*180./np.pi, flight_data['elevation_turn_center']*180./np.pi, linewidth=.8, color='tomato', label='Turn centre')
 
         for j, im in enumerate(mark_points):
             row = flight_data.iloc[im]
 
             if j == 0:
-                lbl = 'Heading'
+                lbl_va = r'$v_{a,\tau}$'
+                lbl_heading = 'Heading'
             else:
-                lbl = None
-            plot_apparent_wind_velocity(ax, row, vwx, .3, color='g', linestyle=':', label=lbl)
+                lbl_va = None
+                lbl_heading = None
+            plot_apparent_wind_velocity(ax, row, vwx, .3, color='g', linestyle=':', label=lbl_va)
+            plot_heading(ax, row, 1, 5, linewidth=1, color='grey', label=lbl_heading)
 
             az_tc, el_tc = row['azimuth_turn_center']*180./np.pi, row['elevation_turn_center']*180./np.pi
             # if np.isnan(az_tc):
@@ -182,7 +193,7 @@ def plot_estimated_turn_center(flight_data, animate=False, vwx=10):
             az, el = row['kite_azimuth']*180./np.pi, row['kite_elevation']*180./np.pi
             ax.plot(az, el, marker, mfc="white", alpha=1, ms=12, mec='C{}'.format(j))
             ax.plot(az, el, marker='${}$'.format(j+1), alpha=1, ms=7, mec='C{}'.format(j))
-        ax.legend(loc=9)
+        legend = ax.legend(ncol=3)
         ax.grid()
 
 
@@ -200,25 +211,25 @@ def visualize_estimated_rotation_vector(flight_data, animate=False):
     # Plot only the magnitude for the paper
     fig, ax = plt.subplots(3, 1, figsize=[5.8, 4.8], sharex=True)
     plt.subplots_adjust(top=0.985, bottom=0.105, left=0.185, right=0.985, hspace=0.125)
-    ax[0].plot(flight_data.time, flight_data.om, color='C3', label=r'$\omega_{\rm rb-gc/turn}$', linewidth=1)
-    ax[0].plot(flight_data.time, om_opt_sphere[2], '--', color='C0', label=r'$\omega_{\rm rb-opt}$')
+    ax[0].plot(flight_data.time, flight_data.om, color='C3', label=r'$\omega_{\rm straight/turn}$', linewidth=1)
+    ax[0].plot(flight_data.time, om_opt_sphere[2], '--', color='C0', label=r'$\omega_{\rm opt}$')
     ax[0].set_xlim([flight_data['time'].iloc[0], flight_data['time'].iloc[-1]])
     ax[0].set_ylim([0, None])
     ax[0].set_ylabel('Rotational\nspeed [rad s$^{-1}$]')
     ax[0].legend(ncol=2)
 
-    ax[1].plot(flight_data.time, (flight_data.vx**2+flight_data.vy**2+flight_data.vz**2)**.5, color='C1', label='Reconstructed', linewidth=2.5)
+    ax[1].plot(flight_data.time, (flight_data.vx**2+flight_data.vy**2+flight_data.vz**2)**.5, color='C1', label='Reconstructed')
     ax[1].plot(flight_data.time, (flight_data.kite_0_vx**2+flight_data.kite_0_vy**2+flight_data.kite_0_vz**2)**.5, ':', color='C2', label='Flight data')
     ax[1].plot(flight_data.time, (flight_data.vx_om**2+flight_data.vy_om**2+flight_data.vz_om**2)**.5, color='C3', linewidth=1)  #, label=r'$\omega_{\rm rb-gc/turn}$')
     ax[1].plot(flight_data.time, (flight_data.vx_om_opt**2+flight_data.vy_om_opt**2+flight_data.vz_om_opt**2)**.5, '--', color='C0')  #, label=r'$\omega_{\rm rb-opt}$')
-    ax[1].set_ylabel('Canopy speed\n[m s$^{-1}$]')
+    ax[1].set_ylabel('Wing speed\n[m s$^{-1}$]')
     ax[1].legend(ncol=2)
 
-    ax[2].plot(flight_data.time, (flight_data.ax**2+flight_data.ay**2+flight_data.az**2)**.5, color='C1', label='Reconstructed', linewidth=2.5)
+    ax[2].plot(flight_data.time, (flight_data.ax**2+flight_data.ay**2+flight_data.az**2)**.5, color='C1', label='Reconstructed')
     ax[2].plot(flight_data.time, (flight_data.kite_1_ax**2+flight_data.kite_1_ay**2+flight_data.kite_1_az**2)**.5, ':', color='C2', label='Flight data')
     ax[2].plot(flight_data.time, (flight_data.ax_om**2+flight_data.ay_om**2+flight_data.az_om**2)**.5, color='C3', linewidth=1)
     ax[2].plot(flight_data.time, (flight_data.ax_om_opt**2+flight_data.ay_om_opt**2+flight_data.az_om_opt**2)**.5, '--', color='C0')
-    ax[2].set_ylabel('Canopy\nacceleration [m s$^{-2}$]')
+    ax[2].set_ylabel('Wing\nacceleration [m s$^{-2}$]')
 
     add_panel_labels(ax, offset_x=.22)
     ax[2].set_xlabel('Time [s]')

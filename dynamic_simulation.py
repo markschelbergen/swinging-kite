@@ -6,7 +6,7 @@ from generate_initial_state import check_constraints, find_initial_velocities_sa
 from dynamic_model import derive_tether_model_kcu_williams, dae_sim
 from utils import plot_vector, unravel_euler_angles, plot_flight_sections, \
     read_and_transform_flight_data, add_panel_labels
-from time_invariant_model import get_tether_end_position
+from steady_rotation_routine import get_tether_end_position
 from scipy.optimize import least_squares
 from turning_center import determine_rigid_body_rotation, mark_points
 from system_properties import l_bridle
@@ -45,7 +45,7 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
     # fig, ax = plt.subplots(2, 1, sharex=True)
     plt.figure(figsize=[4.8, 2.4])
     plt.subplots_adjust(top=0.97, bottom=0.2, left=0.1, right=0.985)
-    plt.plot(t[1:], tether_force[:, 0]*1e-3, label='Dyn')
+    plt.plot(t[1:], tether_force[:, 0]*1e-3, label='Dynamic model')
     plt.ylabel("Tether force ground [kN]")
     plt.ylim([0, None])
     plt.xlabel("Time [s]")
