@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 from generate_initial_state import check_constraints, find_initial_velocities_satisfying_constraints
-from dynamic_model import derive_tether_model_kcu_williams, dae_sim
+from dynamic_model import derive_tether_model_kcu_williams_wo_wing, dae_sim
 from utils import plot_vector, unravel_euler_angles, plot_flight_sections, \
     read_and_transform_flight_data, add_panel_labels
 from steady_rotation_routine import get_tether_end_position
@@ -108,7 +108,8 @@ def run_simulation_with_fitted_acceleration(config=None, animate=False):
     from system_properties import vwx
     # Get tether model.
     n_tether_elements = 30
-    dyn = derive_tether_model_kcu_williams(n_tether_elements, False, vwx=vwx, impose_acceleration_directly=True)
+    # dyn = derive_tether_model_kcu_williams(n_tether_elements, False, vwx=vwx, impose_acceleration_directly=True)
+    dyn = derive_tether_model_kcu_williams_wo_wing(n_tether_elements, vwx=vwx)
 
     flight_data = read_and_transform_flight_data(True, config['i_cycle'])
     if config['sim_interval'] is not None:
@@ -137,11 +138,19 @@ def run_simulation_with_fitted_acceleration(config=None, animate=False):
     positions = []
     for i in range(2):
         row = flight_data.iloc[i]
-        args = (l0, n_tether_elements, list(row[['rx', 'ry', 'rz']]), list(row[['omx_opt', 'omy_opt', 'omz_opt']]),
-                True, False)
-        opt_res = least_squares(get_tether_end_position, list(row[['kite_elevation', 'kite_azimuth', 'kite_distance']]), args=args,
-                                kwargs={'find_force': True}, verbose=0)
-        positions.append(get_tether_end_position(opt_res.x, *args, return_values=True, find_force=True)[0][1:, :])
+        gtep_config = {
+            'set_parameter': l0,
+            'n_tether_elements': n_tether_elements,
+            'r_kite': list(row[['rx', 'ry', 'rz']]),
+            'omega': list(row[['omx_opt', 'omy_opt', 'omz_opt']]),
+            'separate_kcu_mass': True,
+            'elastic_elements': False,
+            'find_force': True,
+        }
+        opt_res = least_squares(get_tether_end_position, list(row[['kite_elevation', 'kite_azimuth', 'kite_distance']]),
+                                args=(gtep_config, ), verbose=0)
+        gtep_config['return_values'] = True
+        positions.append(get_tether_end_position(opt_res.x, gtep_config)[0][1:, :])
     r = positions[0]
     v = (positions[1]-positions[0])/tf
 

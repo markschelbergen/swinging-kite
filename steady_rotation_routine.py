@@ -258,13 +258,13 @@ def find_tether_lengths(flight_data, config, plot=False, plot_instances=mark_poi
         r_kite = np.array(list(row[['rx', 'ry', 'rz']]))
         v_kite = np.array(list(row[['vx', 'vy', 'vz']]))
         gtep_config = {
-            'set_parameter': row['ground_tether_force'],
             'n_tether_elements': config['n_tether_elements'],
+            'separate_kcu_mass': config['separate_kcu_mass'],
+            'elastic_elements': config['elastic_elements'],
+            'set_parameter': row['ground_tether_force'],
             'r_kite': r_kite,
             'v_kite_radial': np.dot(v_kite, r_kite)/np.linalg.norm(r_kite)**2 * r_kite,
             'omega': list(row[['omx_opt', 'omy_opt', 'omz_opt']]),
-            'separate_kcu_mass': config['separate_kcu_mass'],
-            'elastic_elements': config['elastic_elements'],
             'drag_perpendicular': True,
         }
         opt_res = least_squares(get_tether_end_position, list(row[['kite_elevation', 'kite_azimuth', 'kite_distance']]), args=(gtep_config,), verbose=0)
