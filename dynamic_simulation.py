@@ -108,7 +108,7 @@ def run_simulation_with_fitted_acceleration(config=None, animate=False):
     from system_properties import vwx
     # Get tether model.
     n_tether_elements = 30
-    dyn = derive_tether_model_kcu_williams(n_tether_elements, False, vwx=vwx, impose_acceleration_directly=True)
+    dyn = derive_tether_model_kcu_williams(n_tether_elements, vwx=vwx)
 
     flight_data = read_and_transform_flight_data(True, config['i_cycle'])
     if config['sim_interval'] is not None:

@@ -4,14 +4,16 @@ import matplotlib.pyplot as plt
 from system_properties import *
 
 
-def derive_tether_model_kcu_williams(n_tether_elements, explicit=True, vwx=0, impose_acceleration_directly=True):
+def derive_tether_model_kcu_williams(n_tether_elements, vwx=0):
     # Only drag of the lower adjacent tether element is lumped to the point mass.
     vw = ca.vertcat(vwx, 0, 0)
 
     # States
-    n_elements = n_tether_elements
-    n_elements += 1
+    n_elements = n_tether_elements + 1 # n_tether_elements excludes bridle element
+    n_free_pm = n_elements-1  # Upper point mass is not kinematically constrained
     r = ca.SX.sym('r', n_elements, 3)
+    r_wing = r[n_elements-1, :]
+    r_kcu = r[n_elements-2, :]
     v = ca.SX.sym('v', n_elements, 3)
 
     l = ca.SX.sym('l')
@@ -20,12 +22,8 @@ def derive_tether_model_kcu_williams(n_tether_elements, explicit=True, vwx=0, im
 
     # Controls
     ddl = ca.SX.sym('ddl')
-    if impose_acceleration_directly:
-        a_end = ca.SX.sym('a_end', 3)
-        u = ca.vertcat(ddl, a_end)
-    else:
-        fa_kite = ca.SX.sym('fa_kite', 3)
-        u = ca.vertcat(ddl, fa_kite)
+    a_wing = ca.SX.sym('a_wing', 3)
+    u = ca.vertcat(ddl, a_wing)
 
     l_s = l / n_tether_elements
     dl_s = dl / n_tether_elements
@@ -68,22 +66,18 @@ def derive_tether_model_kcu_williams(n_tether_elements, explicit=True, vwx=0, im
             point_mass = m_s
 
         e_k = e_k + .5 * point_mass * ca.dot(vi, vi)
-        if last_element and impose_acceleration_directly:
-            print("Resultant force on last mass point is imposed, i.e. gravity and tether forces etc. on last mass "
-                  "point are not included explicitly.")
-        else:
-            e_p = e_p + point_mass * zi * g
+        # if last_element:
+        #     print("Resultant force on last mass point is imposed, i.e. gravity and tether forces etc. on last mass "
+        #           "point are not included explicitly.")
+        # else:
+        e_p = e_p + point_mass * zi * g
 
-        if last_element:
-            if impose_acceleration_directly:
-                fi = a_end.T*point_mass
-            else:
-                fi = fa_kite.T
-        elif kcu_element:
-            fi = d_s[i, :]/2 + d_kcu
-        else:
+        if kcu_element:
+            fi = d_s[i, :] / 2 + d_kcu
+            f.append(fi)
+        elif not last_element:
             fi = d_s[i, :]
-        f.append(fi)
+            f.append(fi)
 
         if i == 0:
             ri0 = ca.SX.zeros((1, 3))
@@ -113,63 +107,43 @@ def derive_tether_model_kcu_williams(n_tether_elements, explicit=True, vwx=0, im
     tether_lengths = ca.vcat(tether_lengths)
     tether_length_constraints = ca.vcat(tether_length_constraints)
 
-    tmp = ca.vertcat(r[0, :], r[1:, :]-r[:-1, :])
-
     r = ca.vec(r.T)
     v = ca.vec(v.T)
     f = ca.vec(f.T)
 
-    a00 = ca.jacobian(ca.jacobian(e_k, v), v)
-    a10 = ca.jacobian(tether_length_constraints, r)
+    a00 = ca.jacobian(ca.jacobian(e_k, v[:n_free_pm*3]), v[:n_free_pm*3])
+    a10 = ca.jacobian(tether_length_constraints, r[:n_free_pm*3])
     a0 = ca.horzcat(a00, a10.T)
     a1 = ca.horzcat(a10, ca.SX.zeros((n_elements, n_elements)))
     a = ca.vertcat(a0, a1)
-    if impose_acceleration_directly:  # Set tether force on last point mass to zero
-        a[(n_elements - 1) * 3:n_elements * 3, -1] = 0
 
-    c0 = f - ca.jacobian(e_p, r).T
-    c1 = -ca.jacobian(a10@v, r)@v + ca.vertcat((dl_s**2 + l_s*ddl_s) * ca.SX.ones(n_tether_elements, 1), 0)
+    c0 = f - ca.jacobian(e_p, r[:n_free_pm*3]).T
+    gx = ca.jacobian(tether_length_constraints, r)
+    c1 = -ca.jacobian(gx@v, r)@v + ca.vertcat((dl_s**2 + l_s*ddl_s) * ca.SX.ones(n_tether_elements, 1), 0)
     c = ca.vertcat(c0, c1)
 
-    tether_speed_constraints = a10@v - ca.vertcat(l_s*dl_s * ca.SX.ones(n_tether_elements, 1), 0)
+    c[n_free_pm*3+n_elements-1] = c[n_free_pm*3+n_elements-1] - (r_wing-r_kcu)@a_wing
 
-    if explicit:
-        b = ca.mtimes(ca.inv(a), c)
-        rhs = ca.vertcat(v, b[:3*n_elements], dl, ddl)
-        nu = b[3*n_elements:]
-        tether_forces = nu*tmp
-        res = {
-            'x': x,
-            'u': u,
-            'rhs': rhs,
-            'nu': nu,
-            'b': b,
-            'n_elements': n_elements,
-            'fun_b': ca.Function('fun_b', [x, u], [b]),
-            'fun_cons': ca.Function('fun_cons', [x], [tether_length_constraints, tether_speed_constraints]),
-            'fun_tether_forces': ca.Function('fun_t', [x, u], [tether_forces]),
-            'fun_nc_forces': ca.Function('fun_fnc', [x, u], [f]),
-            'fun_weight': ca.Function('fun_w', [x, u], [-ca.jacobian(e_p, r).T])
-        }
-    else:
-        res = {
-            'x': x,
-            'u': u,
-            'a': a,
-            'c': c,
-            'a10': a10,
-            'g': tether_length_constraints,
-            'dg': tether_speed_constraints,
-            'n_free_pm': n_elements,
-            'n_elements': n_elements,
-            'n_tether_elements': n_tether_elements,
-            'tether_lengths': tether_lengths,
-            'rotation_matrices': {
-                'tangential_plane': dcm_tau,
-                'last_element': dcm_last_elem,
-            },
-            'f_mat': ca.Function('f_mat', [x, u], [a, c])
-        }
+    tether_speed_constraints = gx@v - ca.vertcat(l_s*dl_s * ca.SX.ones(n_tether_elements, 1), 0)
+
+    res = {
+        'x': x,
+        'u': u,
+        'a': a,
+        'c': c,
+        'a10': a10,
+        'g': tether_length_constraints,
+        'dg': tether_speed_constraints,
+        'n_free_pm': n_free_pm,
+        'n_elements': n_elements,
+        'n_tether_elements': n_tether_elements,
+        'tether_lengths': tether_lengths,
+        'rotation_matrices': {
+            'tangential_plane': dcm_tau,
+            'last_element': dcm_last_elem,
+        },
+        'f_mat': ca.Function('f_mat', [x, u], [a, c])
+    }
     return res
 
 
@@ -180,7 +154,7 @@ def dae_sim(tf, n_intervals, dyn):
     z = ca.vertcat(a, nu)
 
     f_z = dyn['a'] @ z - dyn['c']
-    f_x = ca.vertcat(dyn['x'][dyn['n_free_pm']*3:dyn['n_free_pm']*6], a, dyn['x'][dyn['n_free_pm']*6+1], dyn['u'][0])
+    f_x = ca.vertcat(dyn['x'][dyn['n_elements']*3:dyn['n_elements']*6], a, dyn['u'][1:4], dyn['x'][dyn['n_elements']*6+1], dyn['u'][0])
 
     # Create an integrator
     dae = {'x': dyn['x'], 'z': z, 'p': dyn['u'], 'ode': f_x, 'alg': f_z}
