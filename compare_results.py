@@ -73,7 +73,7 @@ def combine_results_of_different_analyses():
 
     with open("results/dynamic_results30.pickle", 'rb') as f:
         res = pickle.load(f)
-    ax_tether_shape = plot_offaxial_tether_displacement(res['offaxial_tether_shape'], ax_tether_shape, ls='--', plot_rows=[1])
+    ax_tether_shape = plot_offaxial_tether_displacement(res['offaxial_tether_shape'], ax_tether_shape, ls='-.', plot_rows=[1])
     ax_ypr[0].plot(flight_data.time, res['pitch_bridle']*180./np.pi, label=r'Dynamic N=30')
     ax_ypr[1].plot(flight_data.time, res['roll_bridle']*180./np.pi, label=r'Dynamic N=30')
 

@@ -59,6 +59,12 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
         plt.legend()
         plot_flight_sections(plt.gca(), flight_data)
 
+    # plt.figure()
+    # plt.plot(t, sol_x[:, -2])
+    # plt.ylabel('Tether length')
+    # if plot_interval:
+    #     plt.xlim([flight_data.loc[plot_interval_idx[0], 'time'], flight_data.loc[plot_interval_idx[1], 'time']])
+
     get_rotation_matrices = ca.Function('get_rotation_matrices', [dyn['x'], dyn['u']],
                                         [dyn['rotation_matrices']['tangential_plane'],
                                          dyn['rotation_matrices']['last_element']])
@@ -102,7 +108,7 @@ def run_simulation_with_fitted_acceleration(config=None, animate=False):
             'i_cycle': None,
             # 'input_file_suffix': 'fo8',
             'sim_interval': None,
-            'tether_slack0': .3,
+            'tether_slack0': .28,
             'use_measured_reelout_acceleration': False,
         }
     from system_properties import vwx
@@ -159,14 +165,18 @@ def run_simulation_with_fitted_acceleration(config=None, animate=False):
 
     # Run simulation.
     sol_x, sol_nu = run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=animate, flight_data=flight_data)
+    tether_lengths = sol_x[:, -2]
+    return tether_lengths
 
 
 if __name__ == "__main__":
     config = {
         'i_cycle': 65,
         'sim_interval': (270, 513),
-        'tether_slack0': .3,
+        'tether_slack0': .28,
         'use_measured_reelout_acceleration': False,
     }
-    run_simulation_with_fitted_acceleration(config)  # Generates dynamic results and plots figure 10
+    tether_lengths = run_simulation_with_fitted_acceleration(config)  # Generates dynamic results and plots figure 10
+    # from steady_rotation_routine import find_and_plot_tether_forces
+    # find_and_plot_tether_forces(tether_lengths[299-270:])
     plt.show()

@@ -3,6 +3,12 @@ import casadi as ca
 import numpy as np
 
 
+def plot_flight_sections(ax, df):
+    y0, y1 = ax.get_ylim()
+    ax.set_ylim([y0, y1])
+    ax.fill_between(df.time, y0, y1, where=df['flag_turn'], facecolor='lightsteelblue', alpha=0.5) # lightgrey
+
+
 def setup_integrator_kinematic_model(tf, solver='idas'):
     # ODE for kinematic model
     r = ca.SX.sym('r', 4)
@@ -161,6 +167,114 @@ def apply_low_pass_filter(data, cutoff_freq=.3, fillna=True):
     return filtered_data
 
 
+def plot_cartesian_results(flight_data_raw, flight_data_rec):
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(3, 4, sharex=True)
+    plot_interval = (29.9, 51.2)
+    plot_idx = (
+        (flight_data_raw['time'] == plot_interval[0]).idxmax(),
+        (flight_data_raw['time'] == plot_interval[1]).idxmax()
+    )
+    plt.xlim([flight_data_raw.loc[plot_idx[0], 'time'], flight_data_raw.loc[plot_idx[1], 'time']])
+
+    norm = lambda fd, p: (fd.loc[plot_idx[0]:plot_idx[1], f'{p}x']**2 + fd.loc[plot_idx[0]:plot_idx[1], f'{p}y']**2 +
+                          fd.loc[plot_idx[0]:plot_idx[1], f'{p}z']**2)**.5
+
+    ax[0, 0].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'rx'])
+    ax[0, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'ry'])
+    ax[0, 2].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'rz'])
+    ax[0, 3].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_raw, 'r'))
+
+    ax[0, 0].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'rx'], '-.')#, color='C0')
+    ax[0, 1].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'ry'], '-.')#, color='C1')
+    ax[0, 2].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'rz'], '-.')#, color='C2')
+    ax[0, 3].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_rec, 'r'))
+
+    ax[1, 0].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'vx'])
+    ax[1, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'vy'])
+    ax[1, 2].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'vz'])
+    ax[1, 3].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_raw, 'v'))
+
+    ax[1, 0].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_vx'], color='C2')
+    ax[1, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_vy'], color='C2')
+    ax[1, 2].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_vz'], color='C2')
+    ax[1, 3].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_raw, 'kite_1_v'), color='C2')
+
+    ax[1, 0].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'vx'], '-.')#, color='C0')
+    ax[1, 1].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'vy'], '-.')#, color='C1')
+    ax[1, 2].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'vz'], '-.')#, color='C2')
+    ax[1, 3].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_rec, 'v'), '-.')
+
+    ax[2, 0].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_ax'])
+    ax[2, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_ay'])
+    ax[2, 2].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_az'])
+    ax[2, 3].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_raw, 'kite_1_a'))
+
+    ax[2, 0].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'ax'])#, color='C0')
+    ax[2, 1].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'ay'])#, color='C1')
+    ax[2, 2].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'az'])#, color='C2')
+    ax[2, 3].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_rec, 'a'))
+
+
+def plot_tau_results(flight_data_raw, flight_data_rec):
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(3, 3, sharex=True)
+    plot_interval = (29.9, 51.2)
+    plot_idx = (
+        (flight_data_raw['time'] == plot_interval[0]).idxmax(),
+        (flight_data_raw['time'] == plot_interval[1]).idxmax()
+    )
+    plt.xlim([flight_data_raw.loc[plot_idx[0], 'time'], flight_data_raw.loc[plot_idx[1], 'time']])
+
+    norm = lambda fd, p: (fd.loc[plot_idx[0]:plot_idx[1], f'{p}x']**2 + fd.loc[plot_idx[0]:plot_idx[1], f'{p}y']**2 +
+                          fd.loc[plot_idx[0]:plot_idx[1], f'{p}z']**2)**.5
+
+    ax[0, 0].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'rx'])
+    ax[0, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'ry'])
+    ax[0, 2].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'rz'])
+    ax[1, 0].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_raw, 'r'))
+
+    ax[0, 0].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'rx'], '-.')#, color='C0')
+    ax[0, 1].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'ry'], '-.')#, color='C1')
+    ax[0, 2].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'rz'], '-.')#, color='C2')
+    ax[1, 0].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_rec, 'r'), '-.')
+
+    ax[1, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'vt'])
+    # ax[1, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_course']*180/np.pi)
+    ax[1, 2].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'vr'])
+    # ax[1, 3].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_raw, 'v'))
+
+    ax[1, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_vt'], color='C2')
+    # ax[1, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_course1']*180/np.pi, color='C2')
+    ax[1, 2].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_vr'], color='C2')
+    # ax[1, 3].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_raw, 'kite_1_v'), color='C2')
+
+    ax[1, 1].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'vt'], '-.')#, color='C0')
+    # ax[1, 1].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'kite_course']*180/np.pi, '-.')
+    ax[1, 2].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'vr'], '-.')#, color='C2')
+    # ax[1, 3].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_rec, 'v'), '-.')
+
+    ax[2, 0].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_at'])
+    ax[2, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_an'])
+    ax[2, 2].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_ar'])
+    # ax[2, 3].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_raw, 'kite_1_a'))
+
+    ax[2, 0].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'at'])#, color='C0')
+    ax[2, 1].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'an'])#, color='C1')
+    ax[2, 2].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'ar'])#, color='C2')
+    # ax[2, 3].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_rec, 'a'))
+    # ax[2, 1].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_rec, 'a'), ':')
+
+    # for a in ax[2, :3]: a.set_ylim([-40, 40])
+    # ax[2, 3].set_ylim([0, 80])
+
+    for a in ax.reshape(-1):
+        plot_flight_sections(a, flight_data_raw)
+        a.grid()
+
+
 def plot_reconstruction():
     from scipy.integrate import cumtrapz
     import matplotlib.pyplot as plt
@@ -204,6 +318,16 @@ def plot_reconstruction():
     add_panel_labels(ax, offset_x=.2)
     ax[-1].set_xlabel('Time [s]')
     ax[-1].set_xlim([flight_data_raw['time'].iloc[0], flight_data_raw['time'].iloc[-1]])
+
+    # plot_interval = (29.9, 51.2)
+    # plot_interval_idx = (
+    #     (flight_data_raw['time'] == plot_interval[0]).idxmax(),
+    #     (flight_data_raw['time'] == plot_interval[1]).idxmax()
+    # )
+    # plt.xlim([flight_data_raw.loc[plot_interval_idx[0], 'time'], flight_data_raw.loc[plot_interval_idx[1], 'time']])
+
+    # plot_cartesian_results(flight_data_raw, flight_data_rec)
+    plot_tau_results(flight_data_raw, flight_data_rec)
 
     plt.show()
 

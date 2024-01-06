@@ -4,7 +4,7 @@ import numpy as np
 import pickle
 
 from utils import unravel_euler_angles, plot_flight_sections, rotation_matrix_earth2body, \
-    read_and_transform_flight_data, add_panel_labels, calc_kite_front_wrt_projected_velocity
+    read_and_transform_flight_data, add_panel_labels
 from system_properties import *
 from dynamic_model import derive_tether_model_kcu_williams
 from turning_center import mark_points, determine_rigid_body_rotation
@@ -31,12 +31,12 @@ def get_tether_end_position(x, config):
 
     if find_force:
         beta_n, phi_n, tension_ground = x
-        tether_length = set_parameter
+        tether_length_wo_bridle = set_parameter
     else:
-        beta_n, phi_n, tether_length = x
+        beta_n, phi_n, tether_length_wo_bridle = x
         tension_ground = set_parameter
 
-    l_unstrained = tether_length/n_tether_elements
+    l_unstrained = tether_length_wo_bridle/n_tether_elements
     m_s = np.pi*d_t**2/4 * l_unstrained * rho_t
 
     n_elements = n_tether_elements
@@ -62,7 +62,7 @@ def get_tether_end_position(x, config):
     accelerations = np.zeros((n_elements+1, 3))
     non_conservative_forces = np.zeros((n_elements, 3))
 
-    stretched_tether_length = l_s  # Stretched
+    calc_tether_length_wo_bridle = l_s  # Stretched
     for j in range(n_elements):  # Iterate over point masses.
         last_element = j == n_elements - 1
         kcu_element = separate_kcu_mass and j == n_elements - 2
@@ -150,7 +150,7 @@ def get_tether_end_position(x, config):
                 l_s = (np.linalg.norm(tensions[j+1, :])/tether_stiffness+1)*l_unstrained
             else:
                 l_s = l_unstrained
-            stretched_tether_length += l_s
+            calc_tether_length_wo_bridle += l_s
             positions[j+2, :] = positions[j+1, :] + tensions[j+1, :]/np.linalg.norm(tensions[j+1, :]) * l_s
 
     if return_values == 2:
@@ -178,7 +178,7 @@ def get_tether_end_position(x, config):
         ex_tau = np.cross(ey_tau, ez_tau)
         dcm_tau2w = np.vstack(([ex_tau], [ey_tau], [ez_tau])).T
 
-        return positions, stretched_tether_length, dcm_b2w, dcm_t2w, dcm_fa2w, \
+        return positions, calc_tether_length_wo_bridle, dcm_b2w, dcm_t2w, dcm_fa2w, \
                dcm_tau2w, aerodynamic_force, va
     else:
         return positions[-1, :] - r_kite
@@ -211,7 +211,7 @@ def find_tether_lengths(flight_data, config, plot=False, plot_instances=mark_poi
     phi_upwind_direction = -flight_data.loc[flight_data.index[0], 'est_upwind_direction']-np.pi/2.
 
     from scipy.optimize import least_squares
-    dyn = derive_tether_model_kcu_williams(config['n_tether_elements'], False, vwx=vwx)
+    # dyn = derive_tether_model_kcu_williams(config['n_tether_elements'], vwx=vwx)
 
     if plot:
         # plt.figure(figsize=(3.6, 3.6))
@@ -339,33 +339,32 @@ def find_tether_lengths(flight_data, config, plot=False, plot_instances=mark_poi
     return tether_lengths, strained_tether_lengths, ypr_bridle, ypr_bridle_vk, ypr_tether, ypr_aero_force, pos_tau
 
 
-def find_tether_forces(flight_data, tether_lengths, config):
-    assert not config['elastic_elements']
+def find_tether_forces(flight_data, config, tether_lengths):
+    assert len(tether_lengths) == flight_data.shape[0], f"Mismatch: {len(tether_lengths)}/{flight_data.shape[0]}"
     from scipy.optimize import least_squares
+
     tether_forces = []
-    ypr_tether_end = np.empty((flight_data.shape[0], 3))
-    ypr_tether_second_last = np.empty((flight_data.shape[0], 3))
-    ypr_aero_force = np.empty((flight_data.shape[0], 3))
     for i, (idx, row) in enumerate(flight_data.iterrows()):
-        args = (tether_lengths[i], config['n_tether_elements'], list(row[['rx', 'ry', 'rz']]),
-                list(row[['vx', 'vy', 'vz']]), list(row[['ax', 'ay', 'az']]),
-                config['separate_kcu_mass'], config['elastic_elements'])
-        opt_res = least_squares(get_tether_end_position, list(row[['kite_elevation', 'kite_azimuth', 'kite_distance']]), args=args,
-                                kwargs={'find_force': True}, verbose=0)
+        # Find consistent tether shape
+        r_kite = np.array(list(row[['rx', 'ry', 'rz']]))
+        v_kite = np.array(list(row[['vx', 'vy', 'vz']]))
+        gtep_config = {
+            'n_tether_elements': config['n_tether_elements'],
+            'separate_kcu_mass': config['separate_kcu_mass'],
+            'elastic_elements': config['elastic_elements'],
+            'set_parameter': tether_lengths[i],
+            'r_kite': r_kite,
+            'v_kite_radial': np.dot(v_kite, r_kite)/np.linalg.norm(r_kite)**2 * r_kite,
+            'omega': list(row[['omx_opt', 'omy_opt', 'omz_opt']]),
+            'drag_perpendicular': True,
+            'find_force': True,
+        }
+        opt_res = least_squares(get_tether_end_position, list(row[['kite_elevation', 'kite_azimuth', 'kite_distance']]), args=(gtep_config,), verbose=0)
         if not opt_res.success:
-            print("Optimization failed!")
+            print("Optimization {} failed!".format(i))
         tether_forces.append(opt_res.x[2])
-        p, l_strained, dcm_t2e_i, dcm_tsl2e_i, dcm_fa2e_i, dcm_tau2e_i = get_tether_end_position(opt_res.x, *args, return_values=True,
-                                                                                                 find_force=True)
-        dcm_tau2t = dcm_t2e_i.T.dot(dcm_tau2e_i)
-        ypr_tether_end[i, :] = unravel_euler_angles(dcm_tau2t, '321')
 
-        dcm_tau2tsl = dcm_tsl2e_i.T.dot(dcm_tau2e_i)
-        ypr_tether_second_last[i, :] = unravel_euler_angles(dcm_tau2tsl, '321')
-
-        dcm_tau2fa = dcm_fa2e_i.T.dot(dcm_tau2e_i)
-        ypr_aero_force[i, :] = unravel_euler_angles(dcm_tau2fa, '321')
-    return tether_forces, ypr_tether_end, ypr_tether_second_last, ypr_aero_force
+    return tether_forces
 
 
 def plot_tether_element_pitch(flight_data, ypr_bridle, ax):
@@ -555,6 +554,16 @@ def find_and_plot_tether_lengths(n_tether_elements=30, i_cycle=None, ax=None, co
     tether_lengths, strained_tether_lengths, ypr_bridle, ypr_bridle_vk, ypr_tether, ypr_aero_force, pos_tau = \
         find_tether_lengths(flight_data, config, plot=plot_3d_tether_shapes, plot_instances=plot_instances)
 
+    plt.figure()
+    plt.ylabel('Tether slack [m]')
+    plt.xlabel('Time [s]')
+    plt.plot(flight_data['time'], tether_lengths-flight_data['l'], label='unstrained')
+    plt.plot(flight_data['time'], strained_tether_lengths-flight_data['l'], label='strained')
+    plt.plot(flight_data['time'], strained_tether_lengths-tether_lengths, label='diff')
+    plt.legend()
+    print(np.mean(strained_tether_lengths-flight_data['l']))
+    plt.xlim([flight_data.loc[plot_interval_idx[0], 'time'], flight_data.loc[plot_interval_idx[1], 'time']])
+
     if ax is not None:
         assert config['separate_kcu_mass'], "Analysis only used with bridle element"
         plot_tether_element_pitch(flight_data, ypr_bridle, ax)
@@ -568,6 +577,20 @@ def find_and_plot_tether_lengths(n_tether_elements=30, i_cycle=None, ax=None, co
             }
             with open("results/time_invariant_results{}.pickle".format(config['n_tether_elements']), 'wb') as f:
                 pickle.dump(res, f)
+
+def find_and_plot_tether_forces(tether_lengths):
+    n_tether_elements = 30
+    i_cycle = None
+    config = {
+        'n_tether_elements': n_tether_elements,
+        'separate_kcu_mass': True,
+        'elastic_elements': False,
+        'make_kinematics_consistent': True,
+    }
+    flight_data = read_and_transform_flight_data(config['make_kinematics_consistent'], i_cycle)  # Read flight data.
+    determine_rigid_body_rotation(flight_data)
+    tether_forces = find_tether_forces(flight_data, config, tether_lengths)
+    plt.gca().plot(flight_data['time'], np.array(tether_forces)*1e-3, '--')
 
 
 def match_tether_length_and_speed(tether_lengths, radius, tether_speeds=None):

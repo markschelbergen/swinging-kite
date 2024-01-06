@@ -49,6 +49,9 @@ def rigid_body_rotation_errors(omega, r_kite, v_kite, a_kite):
 
 def determine_rigid_body_rotation(flight_data):
     omega_great_circle = np.empty((flight_data.shape[0], 3))
+    omega_radial = np.empty((flight_data.shape[0], 3))
+    omega_analytic = np.empty((flight_data.shape[0], 3))
+    omega_turn = np.empty((flight_data.shape[0], 3))
     omega_optimized = np.empty((flight_data.shape[0], 3))
     omega_magnitude = np.empty(flight_data.shape[0])
 
@@ -63,8 +66,15 @@ def determine_rigid_body_rotation(flight_data):
         if i == flight_data.shape[0] - 1:
             a_kite = np.array(list(flight_data.loc[idx-1, ['ax', 'ay', 'az']]))
         v_kite = np.array(list(row[['vx', 'vy', 'vz']]))
-
         r_kite = np.array(list(row[['rx', 'ry', 'rz']]))
+
+        r_wt = rotation_matrix_earth2sphere(row['kite_azimuth'], row['kite_elevation'], row['kite_course']).T
+        ex_t = r_wt[:, 0]
+        ey_t = r_wt[:, 1]
+        v_kite_tau = row['vt']*ex_t
+        om_gc = np.cross(r_kite, v_kite_tau) / np.linalg.norm(r_kite) ** 2
+        a_kite_normal = row['an']*ey_t
+        om_r = np.cross(v_kite_tau, a_kite_normal) / np.linalg.norm(v_kite_tau) ** 2
 
         if not np.isnan(row['elevation_turn_center']):  # Turning kite
             elt, azt = row['elevation_turn_center'], row['azimuth_turn_center']
@@ -76,15 +86,20 @@ def determine_rigid_body_rotation(flight_data):
             e_v = e_v/np.linalg.norm(e_v)
             v_kite_rot = np.dot(v_kite, e_v)*e_v
 
-            om = np.cross(r_turn, v_kite_rot)/np.linalg.norm(r_turn)**2
-            omega_magnitude[i] = np.linalg.norm(om)
-            om_opt = least_squares(rigid_body_rotation_errors, om, args=(r_kite, v_kite, a_kite), verbose=0).x
-        else:
-            om = np.cross(r_kite, v_kite)/np.linalg.norm(r_kite)**2
-            om_opt = least_squares(rigid_body_rotation_errors, om, args=(r_kite, v_kite, a_kite), verbose=0).x
-            omega_magnitude[i] = np.linalg.norm(om)
+            om_turn = np.cross(r_turn, v_kite_rot)/np.linalg.norm(r_turn)**2
+            omega_magnitude[i] = np.linalg.norm(om_turn)
 
-        omega_great_circle[i, :] = om
+            om_opt = least_squares(rigid_body_rotation_errors, om_turn, args=(r_kite, v_kite, a_kite), verbose=0).x
+        else:
+            om_turn = [np.nan]*3
+            omega_magnitude[i] = np.linalg.norm(om_gc)
+
+            om_opt = least_squares(rigid_body_rotation_errors, om_gc, args=(r_kite, v_kite, a_kite), verbose=0).x
+
+        omega_great_circle[i, :] = om_gc
+        omega_radial[i, :] = om_r
+        omega_analytic[i, :] = om_gc + om_r
+        omega_turn[i, :] = om_turn
         omega_optimized[i, :] = om_opt
 
         v_om_opt = np.cross(om_opt, r_kite)
@@ -92,19 +107,23 @@ def determine_rigid_body_rotation(flight_data):
         a_om_opt = np.cross(om_opt, v_om_opt)
         a_kite_om_opt[i] = a_om_opt
 
-        v_om = np.cross(om, r_kite)
+        v_om = np.cross(om_gc + om_r, r_kite)
         v_kite_om[i] = v_om
-        a_om = np.cross(om, v_om)
+        a_om = np.cross(om_gc + om_r, v_om)
         a_kite_om[i] = a_om
 
-    flight_data['omx'] = omega_great_circle[:, 0]
-    flight_data['omy'] = omega_great_circle[:, 1]
-    flight_data['omz'] = omega_great_circle[:, 2]
+    flight_data['omx'] = omega_analytic[:, 0]
+    flight_data['omy'] = omega_analytic[:, 1]
+    flight_data['omz'] = omega_analytic[:, 2]
     flight_data['omx_opt'] = omega_optimized[:, 0]
     flight_data['omy_opt'] = omega_optimized[:, 1]
     flight_data['omz_opt'] = omega_optimized[:, 2]
-    # flight_data['om_straight'] = omega_straight
-    # flight_data['om_turn'] = omega_turn
+    flight_data['omx_gc'] = omega_great_circle[:, 0]
+    flight_data['omy_gc'] = omega_great_circle[:, 1]
+    flight_data['omz_gc'] = omega_great_circle[:, 2]
+    flight_data['omx_turn'] = omega_turn[:, 0]
+    flight_data['omy_turn'] = omega_turn[:, 1]
+    flight_data['omz_turn'] = omega_turn[:, 2]
     flight_data['om'] = omega_magnitude
 
     flight_data['vx_om'] = v_kite_om[:, 0]
@@ -222,6 +241,7 @@ def visualize_estimated_rotation_vector(flight_data, animate=False):
     ax[1].plot(flight_data.time, (flight_data.kite_0_vx**2+flight_data.kite_0_vy**2+flight_data.kite_0_vz**2)**.5, ':', color='C2', label='Flight data')
     ax[1].plot(flight_data.time, (flight_data.vx_om**2+flight_data.vy_om**2+flight_data.vz_om**2)**.5, color='C3', linewidth=1)  #, label=r'$\omega_{\rm rb-gc/turn}$')
     ax[1].plot(flight_data.time, (flight_data.vx_om_opt**2+flight_data.vy_om_opt**2+flight_data.vz_om_opt**2)**.5, '--', color='C0')  #, label=r'$\omega_{\rm rb-opt}$')
+    ax[1].plot(flight_data.time, flight_data.vt, color='C4', label='Tangential')
     ax[1].set_ylabel('Wing speed\n[m s$^{-1}$]')
     ax[1].legend(ncol=2)
 
@@ -229,6 +249,8 @@ def visualize_estimated_rotation_vector(flight_data, animate=False):
     ax[2].plot(flight_data.time, (flight_data.kite_1_ax**2+flight_data.kite_1_ay**2+flight_data.kite_1_az**2)**.5, ':', color='C2', label='Flight data')
     ax[2].plot(flight_data.time, (flight_data.ax_om**2+flight_data.ay_om**2+flight_data.az_om**2)**.5, color='C3', linewidth=1)
     ax[2].plot(flight_data.time, (flight_data.ax_om_opt**2+flight_data.ay_om_opt**2+flight_data.az_om_opt**2)**.5, '--', color='C0')
+    ax[2].plot(flight_data.time, flight_data.an, color='C4', label='Normal')
+    ax[2].plot(flight_data.time, flight_data.an.abs(), ':', color='C4', label='Normal')
     ax[2].set_ylabel('Wing\nacceleration [m s$^{-2}$]')
 
     add_panel_labels(ax, offset_x=.22)
@@ -240,6 +262,39 @@ def visualize_estimated_rotation_vector(flight_data, animate=False):
         a.fill_between(flight_data.time, 0, y1, where=flight_data['flag_turn'], facecolor='lightgrey', alpha=0.5)
 
 
+def compare_rotational_velocities(flight_data):
+    import matplotlib.pyplot as plt
+
+    # Plot only the magnitude for the paper
+    fig, ax = plt.subplots(3, 1, figsize=[5.8, 4.8], sharex=True)
+    plt.subplots_adjust(top=0.985, bottom=0.105, left=0.185, right=0.985, hspace=0.125)
+    ax[0].plot(flight_data.time, flight_data.omx, label='analytic')
+    ax[0].plot(flight_data.time, flight_data.omx_opt, label='opt')
+    ax[0].plot(flight_data.time, flight_data.omx_gc, label='great circle')
+    ax[0].plot(flight_data.time, flight_data.omx_turn, label='turn')
+    ax[0].set_xlim([flight_data['time'].iloc[0], flight_data['time'].iloc[-1]])
+    ax[0].set_ylabel('x-component rotational\nvelocity [rad s$^{-1}$]')
+    ax[0].legend()
+
+    ax[1].plot(flight_data.time, flight_data.omy)
+    ax[1].plot(flight_data.time, flight_data.omy_opt)
+    ax[1].plot(flight_data.time, flight_data.omy_gc)
+    ax[1].plot(flight_data.time, flight_data.omy_turn)
+    ax[1].set_ylabel('y-component rotational\nvelocity [rad s$^{-1}$]')
+
+    ax[2].plot(flight_data.time, flight_data.omz)
+    ax[2].plot(flight_data.time, flight_data.omz_opt)
+    ax[2].plot(flight_data.time, flight_data.omz_gc)
+    ax[2].plot(flight_data.time, flight_data.omz_turn)
+    ax[2].set_ylabel('z-component rotational\nvelocity [rad s$^{-1}$]')
+
+    add_panel_labels(ax, offset_x=.22)
+    ax[2].set_xlabel('Time [s]')
+    for a in ax:
+        a.grid()
+        a.fill_between(flight_data.time, a.get_ylim()[0], a.get_ylim()[1], where=flight_data['flag_turn'], facecolor='lightgrey', alpha=0.5)
+
+
 if __name__ == "__main__":
     from utils import read_and_transform_flight_data
     from matplotlib.pyplot import show
@@ -249,4 +304,5 @@ if __name__ == "__main__":
     determine_rigid_body_rotation(flight_data)
     plot_estimated_turn_center(flight_data)  # Plots figure 4
     visualize_estimated_rotation_vector(flight_data)  # Plots figure 6
+    compare_rotational_velocities(flight_data)
     show()

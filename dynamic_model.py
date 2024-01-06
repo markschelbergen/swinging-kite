@@ -9,14 +9,14 @@ def derive_tether_model_kcu_williams(n_tether_elements, vwx=0):
     vw = ca.vertcat(vwx, 0, 0)
 
     # States
-    n_elements = n_tether_elements + 1 # n_tether_elements excludes bridle element
-    n_free_pm = n_elements-1  # Upper point mass is not kinematically constrained
+    n_elements = n_tether_elements + 1  # n_tether_elements excludes bridle element
+    n_free_pm = n_elements-1  # Upper point mass is constrained - others are free
     r = ca.SX.sym('r', n_elements, 3)
     r_wing = r[n_elements-1, :]
     r_kcu = r[n_elements-2, :]
     v = ca.SX.sym('v', n_elements, 3)
 
-    l = ca.SX.sym('l')
+    l = ca.SX.sym('l')  # Without bridle
     dl = ca.SX.sym('dl')
     x = ca.vertcat(ca.vec(r.T), ca.vec(v.T), l, dl)
 
