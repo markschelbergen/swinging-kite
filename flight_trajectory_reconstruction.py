@@ -3,10 +3,24 @@ import casadi as ca
 import numpy as np
 
 
-def plot_flight_sections(ax, df):
-    y0, y1 = ax.get_ylim()
-    ax.set_ylim([y0, y1])
-    ax.fill_between(df.time, y0, y1, where=df['flag_turn'], facecolor='lightsteelblue', alpha=0.5) # lightgrey
+def plot_flight_sections2(ax, df, use_flag_turn=False):
+    # Different shade colors for different turns
+    if isinstance(ax, np.ndarray):
+        ax = ax.reshape(-1)
+    else:
+        ax = [ax]
+    for a in ax:
+        y0, y1 = a.get_ylim()
+        a.set_ylim([y0, y1])
+        if use_flag_turn:
+            a.fill_between(df.time, y0, y1, where=df['flag_turn'], facecolor='lightsteelblue', alpha=0.5) # lightgrey
+        else:
+            a.fill_between(df.time, y0, y1, where=df['pattern_section'] == 2, facecolor='lightgrey', alpha=0.5)
+            a.fill_between(df.time, y0, y1, where=df['pattern_section'] == 0, facecolor='lightsteelblue', alpha=0.5)
+            for i_ph in range(6):
+                mask = df['phase'] == i_ph
+                if mask.sum() > 0:
+                    a.axvline(df.loc[mask.idxmax(), 'time'], linestyle='--', color='grey')
 
 
 def setup_integrator_kinematic_model(tf, solver='idas'):
@@ -53,12 +67,15 @@ def find_acceleration_matching_kite_trajectory(df, solver='idas'):
     accelerations = df[['kite_1_ax', 'kite_1_ay', 'kite_1_az']].values
     opti.set_initial(controls[:, :3], accelerations[:-1, :3])
 
+    # Norm of cartesian coordinates should be equal to the radial coordinate
     opti.subject_to(ca.sum2(states[:, :3]**2)**.5 == states[:, 3])
-    obj = ca.sumsqr(states[:, :3] - mea_pos)
 
+    # Limit changes with respect to the measured position while respecting the measured tether speed as radial velocity
+    obj = ca.sumsqr(states[:, :3] - mea_pos)
     weight_radial_speed = 5
     obj += ca.sumsqr(weight_radial_speed*(states[:, 7] - df.ground_tether_reelout_speed.values))
 
+    # Penalize large steps in acceleration
     weight_control_steps = 1/25
     control_steps = controls[1:, :3]-controls[:-1, :3]
     obj += ca.sumsqr(weight_control_steps*control_steps)
@@ -219,8 +236,11 @@ def plot_cartesian_results(flight_data_raw, flight_data_rec):
 
 def plot_tau_results(flight_data_raw, flight_data_rec):
     import matplotlib.pyplot as plt
+    from utils import add_panel_labels
 
-    fig, ax = plt.subplots(3, 3, sharex=True)
+    fig, ax = plt.subplots(3, 3, sharex=True, figsize=[8, 5.4])
+    wspace = 0.5
+    plt.subplots_adjust(top=0.93, bottom=0.085, left=0.115, right=0.99, hspace=0.1, wspace=wspace)
     plot_interval = (29.9, 51.2)
     plot_idx = (
         (flight_data_raw['time'] == plot_interval[0]).idxmax(),
@@ -231,15 +251,26 @@ def plot_tau_results(flight_data_raw, flight_data_rec):
     norm = lambda fd, p: (fd.loc[plot_idx[0]:plot_idx[1], f'{p}x']**2 + fd.loc[plot_idx[0]:plot_idx[1], f'{p}y']**2 +
                           fd.loc[plot_idx[0]:plot_idx[1], f'{p}z']**2)**.5
 
-    ax[0, 0].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'rx'])
+    ax[0, 0].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'rx'], label='Sensor 0')
     ax[0, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'ry'])
     ax[0, 2].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'rz'])
     ax[1, 0].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_raw, 'r'))
 
-    ax[0, 0].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'rx'], '-.')#, color='C0')
+    ax[0, 0].plot(np.nan, np.nan, label='Sensor 1', color='C2')
+
+    ax[0, 0].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'rx'], '-.', label='Reconstructed')#, color='C0')
     ax[0, 1].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'ry'], '-.')#, color='C1')
     ax[0, 2].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'rz'], '-.')#, color='C2')
     ax[1, 0].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_rec, 'r'), '-.')
+
+    ax[0, 0].set_ylim([200, 260])
+    ax[0, 0].set_ylabel('$r_x$ [m]')
+    ax[0, 1].set_ylim([-85, 85])
+    ax[0, 1].set_ylabel('$r_y$ [m]')
+    ax[0, 2].set_ylim([145, 190])
+    ax[0, 2].set_ylabel('$r_z$ [m]')
+    ax[1, 0].set_ylim([275, 305])
+    ax[1, 0].set_ylabel('r [m]')
 
     ax[1, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'vt'])
     # ax[1, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_course']*180/np.pi)
@@ -253,26 +284,41 @@ def plot_tau_results(flight_data_raw, flight_data_rec):
 
     ax[1, 1].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'vt'], '-.')#, color='C0')
     # ax[1, 1].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'kite_course']*180/np.pi, '-.')
-    ax[1, 2].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'vr'], '-.')#, color='C2')
+    ax[1, 2].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'vr'], '-')#, color='C2')
     # ax[1, 3].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_rec, 'v'), '-.')
 
-    ax[2, 0].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_at'])
-    ax[2, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_an'])
-    ax[2, 2].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_ar'])
+    ax[1, 1].set_ylim([10, 30])
+    ax[1, 1].set_ylabel('$v_t$ [m s$^{-1}$]')
+    ax[1, 2].set_ylim([-.5, 4])
+    ax[1, 2].set_ylabel('$v_r$ [m s$^{-1}$]')
+
+    ax[2, 0].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_at'], color='C2')
+    ax[2, 1].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_an'], color='C2')
+    ax[2, 2].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'kite_1_ar'], color='C2')
     # ax[2, 3].plot(flight_data_raw.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_raw, 'kite_1_a'))
 
-    ax[2, 0].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'at'])#, color='C0')
-    ax[2, 1].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'an'])#, color='C1')
-    ax[2, 2].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'ar'])#, color='C2')
+    ax[2, 0].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'at'], color='C1')
+    ax[2, 1].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'an'], color='C1')
+    ax[2, 2].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'ar'], color='C1')
     # ax[2, 3].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_rec, 'a'))
     # ax[2, 1].plot(flight_data_rec.loc[plot_idx[0]:plot_idx[1], 'time'], norm(flight_data_rec, 'a'), ':')
 
-    # for a in ax[2, :3]: a.set_ylim([-40, 40])
-    # ax[2, 3].set_ylim([0, 80])
+    ax[2, 0].set_ylim([-25, 25])
+    ax[2, 0].set_ylabel('$a_t$ [m s$^{-2}$]')
+    ax[2, 1].set_ylim([-50, 50])
+    ax[2, 1].set_ylabel('$a_n$ [m s$^{-2}$]')
+    ax[2, 2].set_ylim([-10, 10])
+    ax[2, 2].set_ylabel('$a_r$ [m s$^{-2}$]')
+    for a in ax[2, :]: a.set_xlabel('Time [s]')
 
     for a in ax.reshape(-1):
-        plot_flight_sections(a, flight_data_raw)
+        plot_flight_sections2(a, flight_data_raw)
         a.grid()
+
+    ax[0, 0].legend(bbox_to_anchor=(.5, 1.07, 2 + wspace*2, .5), loc="lower left", mode="expand",
+                    borderaxespad=0, ncol=3)
+
+    add_panel_labels(ax, [.5, .485, .46])
 
 
 def plot_reconstruction():
@@ -333,4 +379,4 @@ def plot_reconstruction():
 
 
 if __name__ == "__main__":
-    plot_reconstruction()  # Plots figure A1
+    plot_reconstruction()  # Plots figures 4 and A1

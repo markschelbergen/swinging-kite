@@ -48,7 +48,7 @@ def derive_tether_model_kcu_williams(n_tether_elements, vwx=0):
     e_p = 0
     f = []  # Non-conservative forces
     tether_lengths = []
-    tether_length_constraints = []
+    tether_length_consistency_conditions = []
 
     for i in range(n_elements):
         last_element = i == n_elements - 1
@@ -85,12 +85,12 @@ def derive_tether_model_kcu_williams(n_tether_elements, vwx=0):
             ri0 = r[i-1, :]
         rif = r[i, :]
         dri = rif - ri0
-        tether_lengths.append(dri)
+        tether_lengths.append(ca.norm_2(dri))
 
         if last_element:
-            tether_length_constraints.append(.5 * (ca.dot(dri, dri) - l_bridle**2))
+            tether_length_consistency_conditions.append(.5 * (ca.dot(dri, dri) - l_bridle**2))
         else:
-            tether_length_constraints.append(.5 * (ca.dot(dri, dri) - l_s**2))
+            tether_length_consistency_conditions.append(.5 * (ca.dot(dri, dri) - l_s**2))
 
         if last_element:
             ez_last_elem = dri/ca.norm_2(dri)
@@ -105,26 +105,26 @@ def derive_tether_model_kcu_williams(n_tether_elements, vwx=0):
 
     f = ca.vcat(f)
     tether_lengths = ca.vcat(tether_lengths)
-    tether_length_constraints = ca.vcat(tether_length_constraints)
+    tether_length_consistency_conditions = ca.vcat(tether_length_consistency_conditions)
 
     r = ca.vec(r.T)
     v = ca.vec(v.T)
     f = ca.vec(f.T)
 
     a00 = ca.jacobian(ca.jacobian(e_k, v[:n_free_pm*3]), v[:n_free_pm*3])
-    a10 = ca.jacobian(tether_length_constraints, r[:n_free_pm*3])
+    a10 = ca.jacobian(tether_length_consistency_conditions, r[:n_free_pm*3])
     a0 = ca.horzcat(a00, a10.T)
     a1 = ca.horzcat(a10, ca.SX.zeros((n_elements, n_elements)))
     a = ca.vertcat(a0, a1)
 
     c0 = f - ca.jacobian(e_p, r[:n_free_pm*3]).T
-    gx = ca.jacobian(tether_length_constraints, r)
+    gx = ca.jacobian(tether_length_consistency_conditions, r)
     c1 = -ca.jacobian(gx@v, r)@v + ca.vertcat((dl_s**2 + l_s*ddl_s) * ca.SX.ones(n_tether_elements, 1), 0)
     c = ca.vertcat(c0, c1)
 
     c[n_free_pm*3+n_elements-1] = c[n_free_pm*3+n_elements-1] - (r_wing-r_kcu)@a_wing
 
-    tether_speed_constraints = gx@v - ca.vertcat(l_s*dl_s * ca.SX.ones(n_tether_elements, 1), 0)
+    tether_speed_consistency_conditions = gx@v - ca.vertcat(l_s*dl_s * ca.SX.ones(n_tether_elements, 1), 0)
 
     res = {
         'x': x,
@@ -132,8 +132,8 @@ def derive_tether_model_kcu_williams(n_tether_elements, vwx=0):
         'a': a,
         'c': c,
         'a10': a10,
-        'g': tether_length_constraints,
-        'dg': tether_speed_constraints,
+        'g': tether_length_consistency_conditions,
+        'dg': tether_speed_consistency_conditions,
         'n_free_pm': n_free_pm,
         'n_elements': n_elements,
         'n_tether_elements': n_tether_elements,

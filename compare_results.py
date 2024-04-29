@@ -59,7 +59,7 @@ def combine_results_of_different_analyses():
     linewidths = [2.5, 1.5]
     ax_tether_shape = None
     for i, (n_te, ls, lw) in enumerate(zip(n_tether_elements, linestyles, linewidths)):
-        with open("results/time_invariant_results{}.pickle".format(n_te), 'rb') as f:
+        with open("results/steady_rotation_results{}.pickle".format(n_te), 'rb') as f:
             res = pickle.load(f)
         if i == 1:
             plot_rows = [0]
@@ -95,5 +95,5 @@ def combine_results_of_different_analyses():
 
 
 if __name__ == "__main__":
-    combine_results_of_different_analyses()  # Plots figures 8 and 9
+    combine_results_of_different_analyses()  # Plots figures 10 and 11
     plt.show()

@@ -2,13 +2,13 @@ import casadi as ca
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
-from generate_initial_state import check_constraints, find_initial_velocities_satisfying_constraints
+from generate_initial_state import check_consistency_conditions, find_initial_velocities_satisfying_constraints, check_tether_element_length_drift
 from dynamic_model import derive_tether_model_kcu_williams, dae_sim
 from utils import plot_vector, unravel_euler_angles, plot_flight_sections, \
     read_and_transform_flight_data, add_panel_labels
 from steady_rotation_routine import get_tether_end_position
 from scipy.optimize import least_squares
-from turning_center import determine_rigid_body_rotation, mark_points
+from turning_center import determine_steady_rotation, mark_points
 from system_properties import l_bridle
 
 
@@ -42,7 +42,6 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
     n_tether_elements = dyn.get('n_tether_elements', dyn['n_elements'])
     r_end = np.sum(sol_x[:, (n_tether_elements-1)*3:n_tether_elements*3]**2, axis=1)**.5
 
-    # fig, ax = plt.subplots(2, 1, sharex=True)
     plt.figure(figsize=[4.8, 2.4])
     plt.subplots_adjust(top=0.97, bottom=0.2, left=0.1, right=0.985)
     plt.plot(t[1:], tether_force[:, 0]*1e-3, label='Dynamic model')
@@ -58,12 +57,6 @@ def run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=True, f
         plt.plot(flight_data.time, flight_data.ground_tether_force * 1e-3, label='Measured')
         plt.legend()
         plot_flight_sections(plt.gca(), flight_data)
-
-    # plt.figure()
-    # plt.plot(t, sol_x[:, -2])
-    # plt.ylabel('Tether length')
-    # if plot_interval:
-    #     plt.xlim([flight_data.loc[plot_interval_idx[0], 'time'], flight_data.loc[plot_interval_idx[1], 'time']])
 
     get_rotation_matrices = ca.Function('get_rotation_matrices', [dyn['x'], dyn['u']],
                                         [dyn['rotation_matrices']['tangential_plane'],
@@ -122,7 +115,7 @@ def run_simulation_with_fitted_acceleration(config=None, animate=False):
     else:
         config['sim_interval'] = (0, flight_data.shape[0])
 
-    determine_rigid_body_rotation(flight_data)
+    determine_steady_rotation(flight_data)
     tf = .1  # Time step of the simulation - fixed by flight data time resolution.
     n_intervals = flight_data.shape[0] - 1  # Number of simulation steps - fixed by selected flight data interval.
 
@@ -147,7 +140,7 @@ def run_simulation_with_fitted_acceleration(config=None, animate=False):
             'set_parameter': l0,
             'n_tether_elements': n_tether_elements,
             'r_kite': list(row[['rx', 'ry', 'rz']]),
-            'omega': list(row[['omx_opt', 'omy_opt', 'omz_opt']]),
+            'omega': list(row[['omx', 'omy', 'omz']]),
             'separate_kcu_mass': True,
             'elastic_elements': False,
             'find_force': True,
@@ -161,12 +154,14 @@ def run_simulation_with_fitted_acceleration(config=None, animate=False):
 
     x0 = np.vstack((r.reshape((-1, 1)), v.reshape((-1, 1)), [[l0], [dl0]]))
     x0 = find_initial_velocities_satisfying_constraints(dyn, x0, flight_data.iloc[0][['vx', 'vy', 'vz']])
-    check_constraints(dyn, x0)
+    check_consistency_conditions(dyn, x0)
 
     # Run simulation.
     sol_x, sol_nu = run_simulation_and_plot_results(dyn, tf, n_intervals, x0, u, animate=animate, flight_data=flight_data)
-    tether_lengths = sol_x[:, -2]
-    return tether_lengths
+    total_tether_lengths = sol_x[:, -2]
+    # check_tether_element_length_drift(dyn, sol_x)
+
+    return total_tether_lengths
 
 
 if __name__ == "__main__":
@@ -176,7 +171,5 @@ if __name__ == "__main__":
         'tether_slack0': .28,
         'use_measured_reelout_acceleration': False,
     }
-    tether_lengths = run_simulation_with_fitted_acceleration(config)  # Generates dynamic results and plots figure 10
-    # from steady_rotation_routine import find_and_plot_tether_forces
-    # find_and_plot_tether_forces(tether_lengths[299-270:])
+    total_tether_lengths = run_simulation_with_fitted_acceleration(config)  # Generates dynamic results and plots figure 12
     plt.show()

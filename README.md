@@ -1,10 +1,10 @@
 # Swinging Motion of a Kite with Suspended Control Unit Flying Turning Manoeuvres
 
-This repository contains the Python code used for compiling the paper "Swinging Motion of a Kite with Suspended Control Unit Flying Turning Manoeuvres" that has been submitted to a special issue of Energies on airborne wind energy systems. The code uses experimental flight data of Kitepower B.V. to impose the measured flight path of the wing.
+This repository contains the Python code used for compiling the paper "Swinging Motion of a Kite with Suspended Control Unit Flying Turning Manoeuvres" that is published on Wind Energy Science. The code uses experimental flight data of Kitepower B.V. to impose the measured flight path of the wing.
 
 The paper performs a detailed analysis of a specific figure-of-eight cross-wind manoeuvre of the 65th pumping cycle for which the flight data is provided in [20191008_0065_fig8.csv](20191008_0065_fig8.csv). Moreover, ten pumping cycles are studied in the paper and the corresponding data files are included in the [cycles](cycles) directory. The full flight data can be accessed at DOI: [10.4121/19376174](https://doi.org/10.4121/19376174).
 
-Two models are used in this analysis: a [quasi-static](steady_rotation_routine.py) and [dynamic](dynamic_model.py) model, based on the papers of Williams [[1](#Williams)] and Zanon et al. [[2](#Zanon)], respectively. The dynamic model is implemented using [CasADi](https://github.com/casadi/casadi) to efficiently solve the motion of the kite and tether. Moreover, [CasADi](https://github.com/casadi/casadi) is used to pre-process the recorded kinematics of the wing using an optimal control problem. 
+Two models are used in this analysis: the [steady-rotation-state](steady_rotation_routine.py) and [dynamic](dynamic_model.py) models, based on the papers of Williams [[1](#Williams)] and Zanon et al. [[2](#Zanon)], respectively. The dynamic model is implemented using [CasADi](https://github.com/casadi/casadi) to efficiently solve the motion of the kite and tether. Moreover, [CasADi](https://github.com/casadi/casadi) is used to pre-process the recorded kinematics of the wing using an optimization problem. 
 
  <!-- This repository is archived at time of the publication of the paper and can be accessed at DOI:[](http://doi.org/)-->
 ## Preparing the Python environment
@@ -28,15 +28,16 @@ in which [env_name] should be replaced by the chosen name (previously ```source 
 All the required Python packages (listed in requirements.yml) are installed when creating the environment. Make sure that the new environment is active every time you run any of the Python scripts. Alternatively, linux-64 users may use [environment_linux-64.yml](environment_linux-64.yml) which lists all dependencies explicitly including version and build numbers. 
 
 ## Running the simulations and plotting the results
-The [time_invariant_model.py](steady_rotation_routine.py) and [dynamic_simulation.py](dynamic_simulation.py) scripts output files in the [results](results) directory that are input to [compare_results.py](compare_results.py). Therefore, these scripts should be executed prior to generating the plots that compare the simulation results of the two models. The table below lists the scripts that need to be executed to generate the figures of the paper.
+The [steady_rotation_routine.py](steady_rotation_routine.py) and [dynamic_simulation.py](dynamic_simulation.py) scripts output files in the [results](results) directory that are input to [compare_results.py](compare_results.py). Therefore, these scripts should be executed prior to generating the plots that compare the simulation results of the two models. The table below lists the scripts that need to be executed to generate the figures of the paper.
 
-| Script                           | Output figure(s)   |
-|:---------------------------------|:-------------------|
-| turning_center.py                | 4, 6               |
-| time_invariant_model.py          | 7, 12              |
-| dynamic_simulation.py            | 10                 |
-| compare_results.py               | 8, 9               |
-| plot_steering_input_relations.py | 11                 |
+| Script                               | Output figure(s) |
+|:-------------------------------------|:-----------------|
+| turning_center.py                    | 5, 8             |
+| steady_rotation_routine.py           | 7, 12            |
+| dynamic_simulation.py                | 12               |
+| compare_results.py                   | 10, 11           |
+| plot_steering_input_relations.py     | 13               |
+| flight_trajectory_reconstruction.py  | 4, A1            |
 
 To execute one of these scripts, open the directory of the project and use the following command:
 

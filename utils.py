@@ -163,7 +163,8 @@ def plot_flight_sections(ax, df):
     ax.fill_between(df.time, y0, y1, where=df['flag_turn'], facecolor='lightsteelblue', alpha=0.5) # lightgrey
 
 
-def plot_flight_sections2(ax, df, use_flag_turn=False):
+def plot_flight_sections2(ax, df, use_flag_turn=False, demarcate_phases=True):
+    # Different shade colors for different turns
     if isinstance(ax, np.ndarray):
         ax = ax.reshape(-1)
     else:
@@ -176,10 +177,11 @@ def plot_flight_sections2(ax, df, use_flag_turn=False):
         else:
             a.fill_between(df.time, y0, y1, where=df['pattern_section'] == 2, facecolor='lightgrey', alpha=0.5)
             a.fill_between(df.time, y0, y1, where=df['pattern_section'] == 0, facecolor='lightsteelblue', alpha=0.5)
-            for i_ph in range(6):
-                mask = df['phase'] == i_ph
-                if mask.sum() > 0:
-                    a.axvline(df.loc[mask.idxmax(), 'time'], linestyle='--', color='grey')
+            if demarcate_phases:
+                for i_ph in range(6):
+                    mask = df['phase'] == i_ph
+                    if mask.sum() > 0:
+                        a.axvline(df.loc[mask.idxmax(), 'time'], linestyle='--', color='grey')
 
 
 def calc_rpy_bridle_wrt_tangential_plane(df, rpy_cols=('roll', 'pitch', 'yaw')):
@@ -335,9 +337,9 @@ def read_and_transform_flight_data(make_kinematics_consistent=True, i_cycle=None
     df['l'] = x[:, 3]
     x_kite = np.delete(x, [3, 7], axis=1)
     a_kite = np.delete(u, 3, axis=1)
-    df['ax'] = np.hstack((a_kite[:, 0], [np.nan]))
-    df['ay'] = np.hstack((a_kite[:, 1], [np.nan]))
-    df['az'] = np.hstack((a_kite[:, 2], [np.nan]))
+    df['ax'] = np.hstack((a_kite[:, 0], [a_kite[-1, 0]]))
+    df['ay'] = np.hstack((a_kite[:, 1], [a_kite[-1, 1]]))
+    df['az'] = np.hstack((a_kite[:, 2], [a_kite[-1, 2]]))
 
     if make_kinematics_consistent:
         # Not just use the inferred acceleration, but also impose the corresponding position and velocity.
