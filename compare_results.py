@@ -17,8 +17,8 @@ def plot_offaxial_tether_displacement(pos_tau, ax=None, ls='-', plot_rows=[0, 1]
         plt.subplots_adjust(top=0.885, bottom=0.105, left=0.15, right=0.99, hspace=0.07, wspace=wspace)
         ax[0, 0].set_ylabel("Radial position [m]")
         ax[1, 0].set_ylabel("Radial position [m]")
-        ax[1, 0].set_xlabel("Up-heading position [m]")
-        ax[1, 1].set_xlabel("Cross-heading position [m]")
+        ax[1, 0].set_xlabel("Up-apparent-wind position [m]")
+        ax[1, 1].set_xlabel("Cross-apparent-wind position [m]")
         ax[1, 0].get_shared_x_axes().join(*ax[:, 0])
         ax[1, 1].get_shared_x_axes().join(*ax[:, 1])
         for a in ax.reshape(-1): a.grid()
@@ -58,31 +58,31 @@ def combine_results_of_different_analyses():
     linestyles = ['-', '--']
     linewidths = [2.5, 1.5]
     ax_tether_shape = None
-    for n_te, ls, lw in zip(n_tether_elements, linestyles, linewidths):
-        with open("results/time_invariant_results{}.pickle".format(n_te), 'rb') as f:
+    for i, (n_te, ls, lw) in enumerate(zip(n_tether_elements, linestyles, linewidths)):
+        with open("results/steady_rotation_results{}.pickle".format(n_te), 'rb') as f:
             res = pickle.load(f)
-        if n_te == 1:
+        if i == 1:
             plot_rows = [0]
         else:
             plot_rows = [0, 1]
         ax_tether_shape = plot_offaxial_tether_displacement(res['offaxial_tether_shape'], ax_tether_shape, ls=ls,
                                                             plot_rows=plot_rows)
 
-        ax_ypr[0].plot(flight_data.time, res['pitch_bridle']*180./np.pi, ls=ls, linewidth=lw, label=r'T-I N='+str(n_te))
-        ax_ypr[1].plot(flight_data.time, res['roll_bridle']*180./np.pi, ls=ls, linewidth=lw, label=r'T-I N='+str(n_te))
+        ax_ypr[0].plot(flight_data.time, res['pitch_bridle']*180./np.pi, ls=ls, linewidth=lw, label=r'Steady-rotation N='+str(n_te))
+        ax_ypr[1].plot(flight_data.time, res['roll_bridle']*180./np.pi, ls=ls, linewidth=lw, label=r'Steady-rotation N='+str(n_te))
 
     with open("results/dynamic_results30.pickle", 'rb') as f:
         res = pickle.load(f)
-    ax_tether_shape = plot_offaxial_tether_displacement(res['offaxial_tether_shape'], ax_tether_shape, ls='--', plot_rows=[1])
-    ax_ypr[0].plot(flight_data.time, res['pitch_bridle']*180./np.pi, label=r'Dyn N=30')
-    ax_ypr[1].plot(flight_data.time, res['roll_bridle']*180./np.pi, label=r'Dyn N=30')
+    ax_tether_shape = plot_offaxial_tether_displacement(res['offaxial_tether_shape'], ax_tether_shape, ls='-.', plot_rows=[1])
+    ax_ypr[0].plot(flight_data.time, res['pitch_bridle']*180./np.pi, label=r'Dynamic N=30')
+    ax_ypr[1].plot(flight_data.time, res['roll_bridle']*180./np.pi, label=r'Dynamic N=30')
 
     ax_ypr[0].plot(flight_data.time, flight_data.pitch0_tau * 180. / np.pi, '-.', label='Sensor 0')
     ax_ypr[0].plot(flight_data.time, flight_data.pitch1_tau * 180. / np.pi, '-.', label='Sensor 1')
     ax_ypr[1].plot(flight_data.time, flight_data.roll0_tau * 180. / np.pi, '-.', label='Sensor 0')
     ax_ypr[1].plot(flight_data.time, flight_data.roll1_tau * 180. / np.pi, '-.', label='Sensor 1')
 
-    ax_ypr[0].legend(bbox_to_anchor=(.15, 1.4, .7, .5), loc="lower left", mode="expand",
+    ax_ypr[0].legend(bbox_to_anchor=(.05, 1.4, .9, .5), loc="lower left", mode="expand",
                    borderaxespad=0, ncol=3)
     for a in ax_ypr: a.set_xticks(flight_data['time'].iloc[mark_points])
     ax_ypr[1].set_xticklabels([str(i+1) for i in range(len(mark_points))])
@@ -95,5 +95,5 @@ def combine_results_of_different_analyses():
 
 
 if __name__ == "__main__":
-    combine_results_of_different_analyses()  # Plots figures 8 and 9
+    combine_results_of_different_analyses()  # Plots figures 10 and 11
     plt.show()
