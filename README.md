@@ -1,10 +1,11 @@
 # Swinging Motion of a Kite with Suspended Control Unit Flying Turning Manoeuvres
 
-This repository contains the Python code used for compiling the paper "Swinging Motion of a Kite with Suspended Control Unit Flying Turning Manoeuvres" that is published on Wind Energy Science. The code uses experimental flight data of Kitepower B.V. to impose the measured flight path of the wing.
+This repository contains the Python code used for compiling the paper "Swinging Motion of a Kite with Suspended Control Unit Flying Turning Manoeuvres" that is published on Wind Energy Science [[1](#Schelbergen)] (preprint).
 
-The paper performs a detailed analysis of a specific figure-of-eight cross-wind manoeuvre of the 65th pumping cycle for which the flight data is provided in [20191008_0065_fig8.csv](20191008_0065_fig8.csv). Moreover, ten pumping cycles are studied in the paper and the corresponding data files are included in the [cycles](cycles) directory. The full flight data can be accessed at DOI: [10.4121/19376174](https://doi.org/10.4121/19376174).
+The code uses experimental flight data of Kitepower B.V. to impose the measured flight path of the wing. A specific figure-of-eight cross-wind manoeuvre of the 65th pumping cycle is thoroughly analysed for which the flight data is provided in [20191008_0065_fig8.csv](20191008_0065_fig8.csv). Moreover, ten pumping cycles are studied in the paper and the corresponding data files are included in the [cycles](cycles) directory. The full flight data can be accessed at [[2](#Flightdata08102019)].
 
-Two models are used in this analysis: the [steady-rotation-state](steady_rotation_routine.py) and [dynamic](dynamic_model.py) models, based on the papers of Williams [[1](#Williams)] and Zanon et al. [[2](#Zanon)], respectively. The dynamic model is implemented using [CasADi](https://github.com/casadi/casadi) to efficiently solve the motion of the kite and tether. Moreover, [CasADi](https://github.com/casadi/casadi) is used to pre-process the recorded kinematics of the wing using an optimization problem. 
+
+Two models are used in this analysis: the [steady-rotation-state](steady_rotation_routine.py) and [dynamic](dynamic_model.py) models, based on the papers of Williams [[3](#Williams)] and Zanon et al. [[4](#Zanon)], respectively. The dynamic model is implemented using CasADi [[5](#Andersson)] to efficiently solve the motion of the kite and tether. Moreover, CasADi is used to pre-process the recorded kinematics of the wing using an optimization problem. 
 
  <!-- This repository is archived at time of the publication of the paper and can be accessed at DOI:[](http://doi.org/)-->
 ## Preparing the Python environment
@@ -53,9 +54,15 @@ This data set is licensed under the [![License: CC BY 4.0](https://img.shields.i
 
 ## References
 
-<a name="Williams">[1]</a> Paul Williams (2017). Cable Modeling Approximations for Rapid Simulation. Journal of Guidance Control and Dynamics, 40:7, 1779-1788. [10.2514/1.G002354](https://doi.org/10.2514/1.G002354)
+<a name="Schelbergen">[1]</a> Mark Schelbergen and Roland Schmehl (2023). Swinging Motion of a Kite with Suspended Control Unit Flying Turning Manoeuvres. Wind Energy Science Discussions, 2023, 1-32. [10.5194/wes-2023-121](https://doi.org/10.5194/wes-2023-121)
 
-<a name="Zanon">[2]</a> Mario Zanon, Sébastien Gros, Joel Andersson and Moritz Diehl (2013). Airborne Wind Energy Based on Dual Airfoils. IEEE Transactions on Control Systems Technology, 21:4, 1215-1222. [10.1109/TCST.2013.2257781](https://doi.org/10.1109/TCST.2013.2257781)
+<a name="Flightdata08102019">[2]</a> Mark Schelbergen, Roland Schmehl, Bert Buchholz, Joep Breuer and Johannes Peschel (2024). Kite power flight data acquired on 8 October 2019. Version 1. 4TU.ResearchData. dataset. [10.4121/19376174.v1](https://doi.org/10.4121/19376174.v1)
+
+<a name="Williams">[3]</a> Paul Williams (2017). Cable Modeling Approximations for Rapid Simulation. Journal of Guidance Control and Dynamics, 40:7, 1779-1788. [10.2514/1.G002354](https://doi.org/10.2514/1.G002354)
+
+<a name="Zanon">[4]</a> Mario Zanon, Sébastien Gros, Joel Andersson and Moritz Diehl (2013). Airborne Wind Energy Based on Dual Airfoils. IEEE Transactions on Control Systems Technology, 21:4, 1215-1222. [10.1109/TCST.2013.2257781](https://doi.org/10.1109/TCST.2013.2257781)
+
+<a name="Andersson">[5]</a> Joel Andersson, Joris Gillis, Greg Horn, James Rawlings and Moritz Diehl (2019). CasADi: a software framework for nonlinear optimization and optimal control. Mathematical Programming Computation, 11, 1-36. [10.1007/s12532-018-0139-4](https://doi.org/10.1007/s12532-018-0139-4)
 
 
 ## Acknowledgements
